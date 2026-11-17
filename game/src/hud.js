@@ -13,6 +13,8 @@ export function createHud(G, callbacks) {
     ammo: $('ammo'), radio: $('radio'), passed: $('passed'),
     dialog: $('dialog'), toastEl: $('toast'), vignette: $('vignette'),
     menu: $('menu'), pause: $('pause'), over: $('over'),
+    // v5: interaction prompt, coin counter, race timer
+    interact: $('interact'), coins: $('coins'), race: $('race'),
     dialogOpen: false, dialogQueue: [], dialogDone: null, toastTimer: 0, passedTimer: 0,
   };
   G.hud = hud;
@@ -51,6 +53,19 @@ export function updateHud(G) {
   }
   // damage vignette
   h.vignette.classList.toggle('on', G.player.health < 35 && G.state === 'playing');
+  // v5: side activities + the E-prompt (set by the depth modules each frame)
+  if (h.coins) h.coins.textContent = G.coinsCollected ? `◉ Verde Coins ${G.coinsCollected.size}/${G.coinsTotal}` : '';
+  if (h.interact) {
+    h.interact.textContent = G.interactText || '';
+    h.interact.style.display = G.interactText ? 'block' : 'none';
+  }
+  if (h.race) {
+    if (G.race) {
+      const t = Math.max(0, Math.ceil(G.race.timeLeft));
+      h.race.textContent = `🏁 SUNSET SPRINT — CP ${G.race.cp}/5 — ${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+      h.race.style.display = 'block';
+    } else h.race.style.display = 'none';
+  }
   drawMinimap(G);
   drawCompass(G);
   // objective distance readout

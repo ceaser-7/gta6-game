@@ -12,6 +12,9 @@ export function saveGame(G) {
       onFoot: G.player.onFoot,
       time: Math.round(G.time),
       savedAt: Date.now(),
+      // v5: side-activity progress
+      coins: G.coinsCollected ? [...G.coinsCollected] : [],
+      raceBest: G.raceBest ?? null,
     };
     localStorage.setItem(KEY, JSON.stringify(data));
   } catch (e) { /* storage unavailable: the run just does not persist */ }

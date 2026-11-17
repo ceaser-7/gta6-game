@@ -107,7 +107,8 @@ export function updatePlayerOnFoot(G, dt) {
     p.speed = 0;
     p.walkPhase += dt * 2;
   }
-  collideCircle(G.city, p.pos, 0.6);
+  // v5: inside a room, collide against the room's walls and bounds, not the city
+  collideCircle(G.interior ? G.interior.city : G.city, p.pos, 0.6);
   const swing = p.speed > 0 ? Math.sin(p.walkPhase) * 0.55 : 0;
   p.legL.rotation.x = swing; p.legR.rotation.x = -swing;
   p.armL.rotation.x = -swing * 0.8; p.armR.rotation.x = swing * 0.8;
@@ -119,9 +120,10 @@ export function updatePlayerOnFoot(G, dt) {
 export function updateCamera(G, dt) {
   const cam = G.camera;
   const target = G.player.onFoot ? G.player.pos : (G.player.car ? G.player.car.pos : G.player.pos);
-  // v4: closer cameras — Mara and the cars read bigger on screen (v3: 7.5/11)
-  const dist = G.player.onFoot ? 6.5 : 10;
-  const height = G.player.onFoot ? 2.8 : 4.0;
+  // v5: closer cameras — Mara and the cars read bigger on screen (v3: 7.5/11).
+  // Inside a room the camera pulls in close so it stays inside the walls.
+  const dist = G.interior ? 3.2 : (G.player.onFoot ? 6.5 : 10);
+  const height = G.interior ? 2.0 : (G.player.onFoot ? 2.8 : 4.0);
   // smooth the orbit target toward the player
   if (!G.camTarget) G.camTarget = new THREE.Vector3().copy(target);
   G.camTarget.lerp(new THREE.Vector3(target.x, target.y + 1.2, target.z), Math.min(1, dt * 8));

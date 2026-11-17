@@ -12,6 +12,11 @@ import { createHud, updateHud, setObjective, setTimer, showDialog, closeDialog, 
 import { createAudio } from './audio.js';
 import { saveGame, loadSave, hasSave, clearSave } from './save.js';
 import { shotName, setupShot } from './shots.js';
+// v5 — depth: dialogue, side activities, interiors, living-world events
+import { createDialogue, updateDialogue, tryTalk, nearestTalkablePed } from './dialogue.js';
+import { createActivities, updateActivities, refreshCoinMeshes } from './activities.js';
+import { createInteriors, updateInteriors, tryEnterInterior, tryInteriorInteract, nearestDoor, interiorPrompt } from './interiors.js';
+import { createEvents, updateEvents } from './events.js';
 
 const canvas = document.getElementById('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -175,6 +180,11 @@ createCombat(G);
 createAudio(G);
 createSkids(G);
 createSmoke(G);
+// v5: the depth systems (dialogue, coins + race, interiors, routines/events)
+createDialogue(G);
+createActivities(G);
+createInteriors(G);
+createEvents(G);
 G.saveGame = () => saveGame(G);
 G.spawnFleeingPed = (x, z) => spawnFleeingPed(G, x, z);
 
@@ -255,7 +265,12 @@ function startGame(fresh) {
   G.nextBriefIn = 2.5;
   G.player.health = save ? save.health : 100;
   G.setWanted(0);
-  if (save) G.player.pos.set(save.pos.x, 0, save.pos.z);
+  // v5: restore side-activity progress; a save made inside a room (pos far
+  // outside the city) spawns at the street instead — the room is not a home
+  G.coinsCollected = new Set(save && Array.isArray(save.coins) ? save.coins : []);
+  G.raceBest = save ? (save.raceBest ?? null) : null;
+  refreshCoinMeshes(G);
+  if (save && Math.abs(save.pos.x) <= 420 && Math.abs(save.pos.z) <= 420) G.player.pos.set(save.pos.x, 0, save.pos.z);
   else G.player.pos.set(-54, 0, 30);
   if (G.player.car) { G.player.car.driver = null; G.player.car = null; }
   G.player.onFoot = true;
@@ -304,8 +319,14 @@ window.addEventListener('keydown', e => {
   if (e.code === 'Enter' && G.hud.dialogOpen) { closeDialog(G); return; }
   if (G.state !== 'playing') return;
   if (e.code === 'KeyE') {
-    if (G.player.onFoot) tryEnterCar(G);
-    else exitCar(G);
+    // v5: E does the nearest sensible thing, in priority order. A dialog
+    // open means E is not a new action (Enter closes the dialog instead).
+    if (G.hud.dialogOpen) return;
+    if (!G.player.onFoot) { exitCar(G); return; }
+    if (G.interior) { tryInteriorInteract(G); return; }
+    if (tryEnterInterior(G)) return;
+    if (tryTalk(G)) return;
+    tryEnterCar(G);
   }
   if (e.code === 'KeyF') punch(G);
   if (e.code === 'KeyP' || e.code === 'Escape') {
@@ -336,6 +357,19 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
+
+// v5: the on-screen E-prompt — one line, highest-priority action only.
+// Inside a room it is the room's action; outside, a door beats a chat,
+// and a chat beats a car (the car still works with E when nothing is nearer).
+function updateInteractPrompt(G) {
+  if (G.state !== 'playing' || !G.player.onFoot || G.hud.dialogOpen) { G.interactText = ''; return; }
+  if (G.interior) { G.interactText = interiorPrompt(G); return; }
+  const door = nearestDoor(G);
+  if (door) { G.interactText = `E — Enter ${door.def.name}`; return; }
+  const ped = nearestTalkablePed(G, 2.5);
+  if (ped) { G.interactText = `E — Talk to ${ped.name}`; return; }
+  G.interactText = '';
+}
 
 // --- the frame ---
 // manual clock (THREE.Clock is deprecated in r187)
@@ -377,9 +411,14 @@ function animate() {
       camera.position.x += (Math.random() - 0.5) * G.shake * 0.5;
       camera.position.y += (Math.random() - 0.5) * G.shake * 0.5;
     }
+    updateEvents(G, dt);
     updateTraffic(G, dt);
     updatePolice(G, dt);
     updateMissions(G, dt);
+    updateActivities(G, dt);
+    updateDialogue(G, dt);
+    updateInteriors(G, dt);
+    updateInteractPrompt(G);
     // a wrecked player car strands the player on foot
     if (G.player.car && G.player.car.health <= 0) {
       toast(G, 'The car is wrecked!');

@@ -577,6 +577,14 @@ export function collideCircle(city, p, r) {
       else if (m === pt) p.z = b.minZ - r; else p.z = b.maxZ + r;
     }
   }
+  // v5: a room passes its own bounds rect ({minX,maxX,minZ,maxZ}) so the
+  // player is clamped to the room, not to the city. Otherwise clamp to the map.
+  if (city.bounds) {
+    const b = city.bounds;
+    p.x = Math.max(b.minX, Math.min(b.maxX, p.x));
+    p.z = Math.max(b.minZ, Math.min(b.maxZ, p.z));
+    return;
+  }
   p.x = Math.max(-BOUND, Math.min(BOUND, p.x));
   p.z = Math.max(-BOUND, Math.min(BOUND + 8, p.z));
 }

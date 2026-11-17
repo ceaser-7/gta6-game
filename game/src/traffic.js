@@ -8,6 +8,10 @@ import { mulberry32 } from './city.js';
 
 const SHIRTS = [0xb8b8b8, 0x3a6db0, 0xa84a28, 0x4a8a52, 0xb08d2e, 0x7a4a8a, 0x222831, 0xb86a7e, 0x2e7a7a, 0xa89e8c];
 
+// v5: every pedestrian has a name, so Mara can talk to them. Named faces
+// (Rosa, Dario, Nico, Tomas, Lena) are spawned with an explicit name.
+const PED_NAMES = ['Ana', 'Ben', 'Carla', 'Elena', 'Felix', 'Gloria', 'Hugo', 'Ines', 'Jorge', 'Kira', 'Luis', 'Marta', 'Olga', 'Pablo', 'Sara', 'Uma', 'Vera', 'Will', 'Ximena', 'Yusuf', 'Zara', 'Noor', 'Omar', 'Petra', 'Ruth', 'Sam', 'Tara', 'Vic', 'Wren', 'Yara'];
+
 function makePedMesh(shirt) {
   const g = new THREE.Group();
   const mat = c => new THREE.MeshLambertMaterial({ color: c });
@@ -44,6 +48,14 @@ export function spawnPed(G, x, z, fleeFrom, opts = {}) {
     group, pos: group.position, yaw: rng() * Math.PI * 2,
     speed: 1.4 + rng() * 1.1, state: opts.stand ? 'stand' : 'walk', target: null,
     walkPhase: rng() * 6, downTimer: 0, fleeTimer: 0, fleeFrom: null,
+    // v5: identity + routine, so peds can talk, work shifts and live indoors
+    name: opts.name || PED_NAMES[Math.floor(rng() * PED_NAMES.length)],
+    kind: opts.kind || (opts.stand ? 'stander' : 'walker'),
+    namedKey: opts.namedKey || null,
+    talkAt: 0,
+    interior: opts.interior || null,
+    routine: opts.routine || null,
+    eventPed: false,
   };
   if (fleeFrom) { ped.state = 'flee'; ped.fleeTimer = 3; ped.fleeFrom = fleeFrom; }
   G.peds.push(ped);
@@ -188,9 +200,11 @@ export function updateTraffic(G, dt) {
     }
     car.speed += Math.max(-14 * dt, Math.min(10 * dt, target - car.speed));
     stepCar(G, car, dt, false);
-    // keep the action near the player: respawn far cars close by
+    // keep the action near the player: respawn far cars close by.
+    // v5: not while the player is inside — the player is 600 units away,
+    // so every car would reshuffle every frame while she is indoors.
     const pd = Math.hypot(car.pos.x - G.player.pos.x, car.pos.z - G.player.pos.z);
-    if (pd > 300) {
+    if (!G.interior && pd > 300) {
       const rp = randomRoadPoint(rng);
       car.pos.set(rp.x, 0, rp.z); car.angle = rp.angle; car.speed = 0;
       car.wp = nextWaypoint(G, car);
@@ -231,7 +245,10 @@ export function updateTraffic(G, dt) {
       ped.pos.z += (dz / dist) * speed * dt;
       ped.yaw = Math.atan2(dx / dist, dz / dist);
     }
-    collideCircle(G.city, ped.pos, 0.5);
+    // v5: interior NPCs (Tomas, Lena) live in rooms 600 units away — the city
+    // collider would clamp them back to the map, and street scares do not
+    // reach them through the walls. They stand, sway, and nothing else.
+    if (!ped.interior) collideCircle(G.city, ped.pos, 0.5);
     ped.walkPhase += dt * speed * 3;
     const swing = ped.state === 'stand' ? 0 : Math.sin(ped.walkPhase) * 0.5;
     ped.group.userData.legL.rotation.x = swing;
@@ -239,14 +256,16 @@ export function updateTraffic(G, dt) {
     ped.group.rotation.y = ped.state === 'stand'
       ? ped.yaw + Math.sin(ped.walkPhase * 0.5) * 0.15 : ped.yaw;
     // a fast car or a gunshot nearby makes them flee
-    for (const car of G.cars) {
-      if (Math.abs(car.speed) < 5) continue;
-      const d = Math.hypot(car.pos.x - ped.pos.x, car.pos.z - ped.pos.z);
-      if (d < 7) { ped.state = 'flee'; ped.fleeTimer = 2.5; ped.fleeFrom = { x: car.pos.x, z: car.pos.z }; }
-    }
-    if (G.lastShotAt && G.time - G.lastShotAt < 0.4) {
-      const d = Math.hypot(G.lastShot.x - ped.pos.x, G.lastShot.z - ped.pos.z);
-      if (d < 22) { ped.state = 'flee'; ped.fleeTimer = 3; ped.fleeFrom = { x: G.lastShot.x, z: G.lastShot.z }; }
+    if (!ped.interior) {
+      for (const car of G.cars) {
+        if (Math.abs(car.speed) < 5) continue;
+        const d = Math.hypot(car.pos.x - ped.pos.x, car.pos.z - ped.pos.z);
+        if (d < 7) { ped.state = 'flee'; ped.fleeTimer = 2.5; ped.fleeFrom = { x: car.pos.x, z: car.pos.z }; }
+      }
+      if (G.lastShotAt && G.time - G.lastShotAt < 0.4) {
+        const d = Math.hypot(G.lastShot.x - ped.pos.x, G.lastShot.z - ped.pos.z);
+        if (d < 22) { ped.state = 'flee'; ped.fleeTimer = 3; ped.fleeFrom = { x: G.lastShot.x, z: G.lastShot.z }; }
+      }
     }
   }
   // --- keep the streets busy: top up stolen traffic cars ---

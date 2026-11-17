@@ -29,6 +29,9 @@
   #speedo { right: 16px; bottom: 16px; font-size: 30px; font-weight: 800; text-align: right; }
   #speedo small { font-size: 14px; font-weight: 600; color: #cfe3ff; }
   #hint { right: 16px; top: 14px; font-size: 13px; color: #dfe9ff; background: rgba(0,0,0,.45); padding: 6px 10px; border-radius: 6px; line-height: 1.5; text-align: right; }
+  #coins { top: 118px; left: 14px; font-size: 14px; font-weight: 700; color: #ffd23e; }
+  #race { right: 16px; top: 44px; font-size: 14px; font-weight: 800; color: #ffd23e; background: rgba(0,0,0,.55); padding: 6px 12px; border-radius: 6px; display: none; }
+  #interact { left: 50%; bottom: 150px; transform: translateX(-50%); font-size: 15px; font-weight: 700; color: #7dff9a; background: rgba(0,0,0,.55); padding: 5px 14px; border-radius: 6px; display: none; white-space: nowrap; }
   #dialog { left: 50%; top: 16%; transform: translateX(-50%); width: min(560px, 86vw); background: rgba(8,12,20,.88); border: 1px solid #ffb347; border-radius: 10px; padding: 16px 20px; display: none; }
   #dialog .who { color: #ffb347; font-weight: 800; letter-spacing: 1px; font-size: 13px; text-transform: uppercase; }
   #dialog .text { margin-top: 6px; font-size: 16px; line-height: 1.45; }
@@ -63,6 +66,7 @@
   <div class="panel" id="stars"></div>
   <div class="panel" id="healthbar"><div id="healthfill"></div></div>
   <div class="panel" id="money">$0</div>
+  <div class="panel" id="coins"></div>
   <div class="panel" id="ammo"></div>
   <canvas class="panel" id="minimap" width="200" height="200"></canvas>
   <canvas class="panel" id="compass" width="260" height="24"></canvas>
@@ -71,6 +75,8 @@
   <div class="panel" id="objdist"></div>
   <div class="panel" id="speedo"></div>
   <div class="panel" id="hint">WASD drive &nbsp;·&nbsp; E enter car &nbsp;·&nbsp; Click shoot &nbsp;·&nbsp; Tab map &nbsp;·&nbsp; P pause</div>
+  <div class="panel" id="race"></div>
+  <div class="panel" id="interact"></div>
   <div class="panel" id="dialog"><div class="who"></div><div class="text"></div><div class="key">Press ENTER to continue</div></div>
   <div class="panel" id="toast"></div>
   <div class="panel" id="passed"><div class="big">MISSION PASSED</div><div class="pay"></div><div class="line"></div></div>
@@ -81,8 +87,8 @@
 <div class="screen" id="menu">
   <h1>PORTO <span>VERDE</span></h1>
   <h2>An open-world crime game</h2>
-  <p>You are <b>Mara Voss</b>, getaway driver. You owe a fixer named <b>Rook</b> a debt you cannot pay — so you drive for him instead. Three jobs stand between you and a clean slate. The city is yours: steal any car, outrun the Verde PD, and do not get caught.</p>
-  <div class="controls">WASD — move / drive &nbsp;·&nbsp; Mouse — look &nbsp;·&nbsp; E — enter / exit car &nbsp;·&nbsp; F — punch &nbsp;·&nbsp; Click — shoot<br>R — reload &nbsp;·&nbsp; Q — radio &nbsp;·&nbsp; H — horn &nbsp;·&nbsp; Shift — run &nbsp;·&nbsp; Space — handbrake<br>Tab — city map &nbsp;·&nbsp; P — pause &nbsp;·&nbsp; M — mute &nbsp;·&nbsp; Progress saves automatically</div>
+  <p>You are <b>Mara Voss</b>, getaway driver. You owe a fixer named <b>Rook</b> a debt you cannot pay — so you drive for him instead. Three jobs stand between you and a clean slate. The city is yours: steal any car, outrun the Verde PD, and do not get caught. Talk to people — they gossip, warn you, and point you at work. Hunt the twelve Verde Coins, race the Sunset Sprint, eat at El Faro, and get your car fixed at Sunray Garage.</p>
+  <div class="controls">WASD — move / drive &nbsp;·&nbsp; Mouse — look &nbsp;·&nbsp; E — enter car / talk / enter shops &nbsp;·&nbsp; F — punch &nbsp;·&nbsp; Click — shoot<br>R — reload &nbsp;·&nbsp; Q — radio &nbsp;·&nbsp; H — horn &nbsp;·&nbsp; Shift — run &nbsp;·&nbsp; Space — handbrake<br>Tab — city map &nbsp;·&nbsp; P — pause &nbsp;·&nbsp; M — mute &nbsp;·&nbsp; Progress saves automatically</div>
   <div>
     <button id="btnStart">START ENGINE</button>
     <button id="btnContinue" class="ghost" style="display:none">CONTINUE</button>

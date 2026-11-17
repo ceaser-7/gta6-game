@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { createCar, stepCar } from './vehicles.js';
 import { showPassed } from './hud.js';
+import { playStory } from './story.js';
 
 const MISSIONS = [
   {
@@ -74,6 +75,9 @@ export function startMission(G, index) {
     target: null, packageGot: false,
   };
   G.mission = m;
+  // v5: before the last job, Rook warns her and Mara answers — the stakes
+  // are spoken before the briefing, not just in it
+  if (index === 2) playStory(G, 'beforeM3');
   G.hud.showDialog(def.who, def.brief, () => {
     m.stage = 'active';
     if (index === 0) {
@@ -241,8 +245,12 @@ function completeMission(G, line) {
   G.saveGame();
   if (G.missionIndex >= 3) {
     G.hud.showDialog('Rook — fixer', line + ' Three jobs, debt cleared. The city is open — drive it, Mara.', () => {});
+    // v5: the epilogue — Mara gets the last word
+    playStory(G, 'epilogue');
   } else {
     G.hud.showDialog('Rook — fixer', line, () => {});
+    // v5: a story beat after each job — the debt, the collector, her answer
+    playStory(G, m.index === 0 ? 'afterM1' : 'afterM2');
   }
 }
 
