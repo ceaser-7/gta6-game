@@ -208,6 +208,8 @@ createHud(G, {
   onRetry: () => retry(),
   onMenu: () => toMenu(),
 });
+// test hook: lets the headless play-test drive wanted level, time of day and missions
+window.__PV = G;
 G.hud.setObjective = t => setObjective(G, t);
 G.hud.setTimer = s => setTimer(G, s);
 G.hud.showDialog = (w, t, d) => showDialog(G, w, t, d);
