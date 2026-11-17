@@ -10,9 +10,10 @@ export function createHud(G, callbacks) {
     el: $('hud'), stars: $('stars'), healthfill: $('healthfill'), money: $('money'),
     minimap: $('minimap'), compass: $('compass'), bigmap: $('bigmap'), bigmapWrap: $('bigmapWrap'),
     objdist: $('objdist'), objective: $('objective'), speedo: $('speedo'),
+    ammo: $('ammo'), radio: $('radio'), passed: $('passed'),
     dialog: $('dialog'), toastEl: $('toast'), vignette: $('vignette'),
     menu: $('menu'), pause: $('pause'), over: $('over'),
-    dialogOpen: false, dialogQueue: [], dialogDone: null, toastTimer: 0,
+    dialogOpen: false, dialogQueue: [], dialogDone: null, toastTimer: 0, passedTimer: 0,
   };
   G.hud = hud;
   $('btnStart').addEventListener('click', () => callbacks.onStart());
@@ -39,6 +40,9 @@ export function updateHud(G) {
   h.healthfill.style.width = hp + '%';
   h.healthfill.style.background = hp > 50 ? 'linear-gradient(90deg,#37d67a,#a5e34d)' : hp > 25 ? 'linear-gradient(90deg,#e8a33a,#e8d23a)' : 'linear-gradient(90deg,#d63a37,#e86a3a)';
   h.money.textContent = '$' + G.money.toLocaleString('en-US');
+  // weapon + radio
+  h.ammo.textContent = G.reloading ? 'PISTOL — RELOADING…' : `PISTOL ${G.ammo ?? 12}/${G.ammoMag ?? 12}`;
+  h.radio.textContent = G.audio && G.audio.stationName ? '📻 ' + G.audio.stationName() : '';
   // speed
   if (G.player.car) {
     h.speedo.innerHTML = Math.round(Math.abs(G.player.car.speed) * 3.6) + ' <small>km/h</small>';
@@ -105,9 +109,10 @@ function drawMinimap(G) {
     if (Z(c0) > -10 && Z(c0) < S + 10) { g.beginPath(); g.moveTo(-5, Z(c0)); g.lineTo(S + 5, Z(c0)); g.stroke(); }
   }
   const dot = (x, z, r, col) => { g.fillStyle = col; g.beginPath(); g.arc(X(x), Z(z), r, 0, Math.PI * 2); g.fill(); };
-  // traffic + police
+  // traffic + police + the courier van (yellow)
   for (const car of G.cars) {
     if (car.isPolice) dot(car.pos.x, car.pos.z, 4, Math.floor(G.time * 6) % 2 ? '#ff4444' : '#4488ff');
+    else if (car.driver === 'courier') dot(car.pos.x, car.pos.z, 4, '#ffd23e');
     else if (car.driver === 'traffic') dot(car.pos.x, car.pos.z, 2.5, 'rgba(255,255,255,0.9)');
   }
   // mission beacon: in-view dot + distance, or an edge arrow pointing at it
@@ -319,6 +324,16 @@ export function toast(G, text) {
   h.toastEl.style.display = 'block';
   clearTimeout(h.toastTimer);
   h.toastTimer = setTimeout(() => { h.toastEl.style.display = 'none'; }, 2800);
+}
+
+// Big "MISSION PASSED" card with the payout, auto-hides after 3.5 s.
+export function showPassed(G, name, reward, line) {
+  const h = G.hud;
+  h.passed.querySelector('.pay').textContent = `+$${reward}`;
+  h.passed.querySelector('.line').textContent = name + ' — ' + line;
+  h.passed.style.display = 'block';
+  clearTimeout(h.passedTimer);
+  h.passedTimer = setTimeout(() => { h.passed.style.display = 'none'; }, 3500);
 }
 
 export function flash(G) {

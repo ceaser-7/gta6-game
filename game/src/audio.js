@@ -96,18 +96,43 @@ export function createAudio(G) {
     A.muted = m;
     if (A.master) A.master.gain.value = m ? 0 : 0.55;
   };
-  // a slow, warm bassline: Am – F – C – G, one note a bar, plus a soft tick
-  const BASS = [110, 87.3, 130.8, 98];
+  // radio: three synth stations, Q cycles them. All generated, no files.
+  const STATIONS = [
+    { name: 'VERDE FM', bass: [110, 87.3, 130.8, 98], step: 480, tick: true, drive: false },
+    { name: 'BASSLINE 98', bass: [55, 55, 65.4, 49], step: 300, tick: true, drive: true },
+    { name: 'COAST 101', bass: [130.8, 164.8, 196, 146.8], step: 640, tick: false, drive: false },
+  ];
+  A.station = 0;
+  A.stationName = () => STATIONS[A.station].name;
   A.startMusic = () => {
-    if (!ensure() || A.musicTimer) return;
+    if (!ensure()) return;
+    if (A.musicTimer) clearInterval(A.musicTimer);
+    const st = STATIONS[A.station];
     A.musicTimer = setInterval(() => {
       if (A.muted || !A.ctx) return;
-      const bar = BASS[A.musicStep % 4];
-      blip(bar, 1.6, 'triangle', 0.12);
-      blip(bar * 2, 1.2, 'sine', 0.05);
-      if (A.musicStep % 2 === 1) noise(0.03, 6000, 0.03);
+      const bar = st.bass[A.musicStep % st.bass.length];
+      blip(bar, st.step / 300, 'triangle', st.drive ? 0.16 : 0.12);
+      blip(bar * 2, st.step / 400, 'sine', 0.05);
+      if (st.tick) noise(0.03, 6000, 0.03);
+      if (st.drive && A.musicStep % 2 === 0) noise(0.05, 1200, 0.06);
       A.musicStep++;
-    }, 480);
+    }, st.step);
+  };
+  A.nextStation = () => {
+    A.station = (A.station + 1) % STATIONS.length;
+    A.musicStep = 0;
+    A.startMusic();
+    if (G.hud) G.hud.toast('📻 ' + STATIONS[A.station].name);
+  };
+  A.horn = () => {
+    if (!ensure() || A.muted) return;
+    const o1 = A.ctx.createOscillator(), o2 = A.ctx.createOscillator(), g = A.ctx.createGain();
+    o1.type = 'square'; o1.frequency.value = 370;
+    o2.type = 'square'; o2.frequency.value = 440;
+    g.gain.setValueAtTime(0.14, A.ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, A.ctx.currentTime + 0.4);
+    o1.connect(g); o2.connect(g); g.connect(A.master);
+    o1.start(); o2.start(); o1.stop(A.ctx.currentTime + 0.4); o2.stop(A.ctx.currentTime + 0.4);
   };
   return A;
 }

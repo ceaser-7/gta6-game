@@ -15,22 +15,28 @@
   #healthbar { top: 48px; left: 14px; width: 180px; height: 12px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.5); }
   #healthfill { height: 100%; width: 100%; background: linear-gradient(90deg,#37d67a,#a5e34d); }
   #money { top: 66px; left: 14px; font-size: 20px; font-weight: 700; color: #7dff9a; }
-  #minimap { top: 12px; right: 14px; width: 200px; height: 200px; border: 2px solid rgba(255,255,255,.65); border-radius: 50%; background: #101820; box-shadow: 0 0 0 3px rgba(0,0,0,.45); }
+  #ammo { top: 92px; left: 14px; font-size: 14px; font-weight: 700; color: #ffe9b0; }
+  #minimap { left: 14px; bottom: 14px; width: 200px; height: 200px; border: 2px solid rgba(255,255,255,.65); border-radius: 50%; background: #101820; box-shadow: 0 0 0 3px rgba(0,0,0,.45); }
   #compass { top: 12px; left: 50%; transform: translateX(-50%); width: 260px; height: 24px; background: rgba(0,0,0,.4); border-radius: 4px; }
+  #radio { top: 44px; left: 50%; transform: translateX(-50%); font-size: 12px; font-weight: 700; letter-spacing: 1px; color: #9fd4e8; background: rgba(0,0,0,.45); padding: 3px 10px; border-radius: 4px; }
   #objdist { left: 50%; bottom: 88px; transform: translateX(-50%); font-size: 15px; font-weight: 700; color: #ffd23e; background: rgba(0,0,0,.55); padding: 4px 12px; border-radius: 6px; }
   #objdist:empty { display: none; }
   #bigmapWrap { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; background: rgba(5,8,14,.82); z-index: 8; pointer-events: none; }
   #bigmap { width: 560px; height: 560px; max-width: 92vw; max-height: 82vh; border: 2px solid rgba(255,255,255,.7); border-radius: 10px; background: #101820; }
   #bigmapWrap .maphint { margin-top: 10px; font-size: 14px; color: #dfe9ff; }
   #objective { left: 50%; bottom: 118px; transform: translateX(-50%); font-size: 17px; font-weight: 600; background: rgba(0,0,0,.55); padding: 7px 16px; border-radius: 6px; max-width: 70vw; text-align: center; }
-  #speedo { left: 16px; bottom: 16px; font-size: 30px; font-weight: 800; }
+  #speedo { right: 16px; bottom: 16px; font-size: 30px; font-weight: 800; text-align: right; }
   #speedo small { font-size: 14px; font-weight: 600; color: #cfe3ff; }
-  #hint { right: 16px; bottom: 16px; font-size: 13px; color: #dfe9ff; background: rgba(0,0,0,.45); padding: 6px 10px; border-radius: 6px; line-height: 1.5; text-align: right; }
+  #hint { right: 16px; top: 14px; font-size: 13px; color: #dfe9ff; background: rgba(0,0,0,.45); padding: 6px 10px; border-radius: 6px; line-height: 1.5; text-align: right; }
   #dialog { left: 50%; top: 16%; transform: translateX(-50%); width: min(560px, 86vw); background: rgba(8,12,20,.88); border: 1px solid #ffb347; border-radius: 10px; padding: 16px 20px; display: none; }
   #dialog .who { color: #ffb347; font-weight: 800; letter-spacing: 1px; font-size: 13px; text-transform: uppercase; }
   #dialog .text { margin-top: 6px; font-size: 16px; line-height: 1.45; }
   #dialog .key { margin-top: 10px; font-size: 12px; color: #9fb4d8; }
   #toast { left: 50%; top: 34%; transform: translateX(-50%); font-size: 26px; font-weight: 800; color: #ffd23e; display: none; }
+  #passed { left: 50%; top: 38%; transform: translateX(-50%); text-align: center; display: none; }
+  #passed .big { font-size: 52px; font-weight: 900; letter-spacing: 4px; color: #7dff9a; text-shadow: 0 3px 0 rgba(0,0,0,.5); }
+  #passed .pay { font-size: 24px; font-weight: 800; color: #ffd23e; margin-top: 6px; }
+  #passed .line { font-size: 16px; color: #eaf2ff; margin-top: 4px; }
   #vignette { position: fixed; inset: 0; pointer-events: none; display: none; background: radial-gradient(ellipse at center, transparent 55%, rgba(200,0,0,.55) 100%); }
   #vignette.on { display: block; }
   .screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; background: linear-gradient(160deg, #0e2a4a 0%, #123f63 45%, #c96a2b 100%); color: #fff; z-index: 5; text-align: center; }
@@ -56,14 +62,17 @@
   <div class="panel" id="stars"></div>
   <div class="panel" id="healthbar"><div id="healthfill"></div></div>
   <div class="panel" id="money">$0</div>
+  <div class="panel" id="ammo"></div>
   <canvas class="panel" id="minimap" width="200" height="200"></canvas>
   <canvas class="panel" id="compass" width="260" height="24"></canvas>
+  <div class="panel" id="radio"></div>
   <div class="panel" id="objective"></div>
   <div class="panel" id="objdist"></div>
   <div class="panel" id="speedo"></div>
-  <div class="panel" id="hint">WASD move &nbsp;·&nbsp; Mouse look<br>E enter / exit car &nbsp;·&nbsp; F punch &nbsp;·&nbsp; Click shoot<br>Shift run &nbsp;·&nbsp; Space handbrake &nbsp;·&nbsp; Tab map &nbsp;·&nbsp; P pause &nbsp;·&nbsp; M mute</div>
+  <div class="panel" id="hint">WASD move &nbsp;·&nbsp; Mouse look<br>E enter / exit car &nbsp;·&nbsp; F punch &nbsp;·&nbsp; Click shoot<br>R reload &nbsp;·&nbsp; Q radio &nbsp;·&nbsp; H horn<br>Shift run &nbsp;·&nbsp; Space handbrake &nbsp;·&nbsp; Tab map &nbsp;·&nbsp; P pause &nbsp;·&nbsp; M mute</div>
   <div class="panel" id="dialog"><div class="who"></div><div class="text"></div><div class="key">Press ENTER to continue</div></div>
   <div class="panel" id="toast"></div>
+  <div class="panel" id="passed"><div class="big">MISSION PASSED</div><div class="pay"></div><div class="line"></div></div>
 </div>
 <div id="vignette"></div>
 <div id="bigmapWrap"><canvas id="bigmap" width="560" height="560"></canvas><div class="maphint">Press Tab to close the map</div></div>
@@ -72,7 +81,7 @@
   <h1>PORTO <span>VERDE</span></h1>
   <h2>An open-world crime game</h2>
   <p>You are <b>Mara Voss</b>, getaway driver. You owe a fixer named <b>Rook</b> a debt you cannot pay — so you drive for him instead. Three jobs stand between you and a clean slate. The city is yours: steal any car, outrun the Verde PD, and do not get caught.</p>
-  <div class="controls">WASD — move / drive &nbsp;·&nbsp; Mouse — look &nbsp;·&nbsp; E — enter / exit car &nbsp;·&nbsp; F — punch &nbsp;·&nbsp; Click — shoot<br>Shift — run &nbsp;·&nbsp; Space — handbrake &nbsp;·&nbsp; Tab — city map &nbsp;·&nbsp; P — pause &nbsp;·&nbsp; M — mute &nbsp;·&nbsp; Progress saves automatically</div>
+  <div class="controls">WASD — move / drive &nbsp;·&nbsp; Mouse — look &nbsp;·&nbsp; E — enter / exit car &nbsp;·&nbsp; F — punch &nbsp;·&nbsp; Click — shoot<br>R — reload &nbsp;·&nbsp; Q — radio &nbsp;·&nbsp; H — horn &nbsp;·&nbsp; Shift — run &nbsp;·&nbsp; Space — handbrake<br>Tab — city map &nbsp;·&nbsp; P — pause &nbsp;·&nbsp; M — mute &nbsp;·&nbsp; Progress saves automatically</div>
   <div>
     <button id="btnStart">START ENGINE</button>
     <button id="btnContinue" class="ghost" style="display:none">CONTINUE</button>

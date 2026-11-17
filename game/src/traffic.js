@@ -6,7 +6,7 @@ import { createCar, stepCar, carForward } from './vehicles.js';
 import { randomRoadPoint, randomSidewalkPoint, collideCircle, HALF, PITCH } from './city.js';
 import { mulberry32 } from './city.js';
 
-const SHIRTS = [0xd8d8d8, 0x3a6db0, 0xc25a2e, 0x4a9e5c, 0xd8b02e, 0x8a5a9e, 0x222831];
+const SHIRTS = [0xd8d8d8, 0x3a6db0, 0xc25a2e, 0x4a9e5c, 0xd8b02e, 0x8a5a9e, 0x222831, 0xe87a9e, 0x2e8a8a, 0xb8b0a0];
 
 function makePedMesh(shirt) {
   const g = new THREE.Group();
@@ -31,14 +31,15 @@ function makePedMesh(shirt) {
   return g;
 }
 
-export function spawnPed(G, x, z, fleeFrom) {
+export function spawnPed(G, x, z, fleeFrom, opts = {}) {
   const rng = G.rng;
   const group = makePedMesh(SHIRTS[Math.floor(rng() * SHIRTS.length)]);
   group.position.set(x, 0, z);
+  group.scale.setScalar(0.92 + rng() * 0.16); // varied heights
   G.scene.add(group);
   const ped = {
     group, pos: group.position, yaw: rng() * Math.PI * 2,
-    speed: 1.4 + rng() * 1.1, state: 'walk', target: null,
+    speed: 1.4 + rng() * 1.1, state: opts.stand ? 'stand' : 'walk', target: null,
     walkPhase: rng() * 6, downTimer: 0, fleeTimer: 0, fleeFrom: null,
   };
   if (fleeFrom) { ped.state = 'flee'; ped.fleeTimer = 3; ped.fleeFrom = fleeFrom; }
@@ -58,7 +59,9 @@ function pickPedTarget(G, ped) {
 export function spawnTrafficCar(G) {
   const rng = G.rng;
   const rp = randomRoadPoint(rng);
-  const car = createCar(G, rp.x, rp.z, rp.angle, 0, { isTraffic: true, driver: 'traffic', maxSpeed: 8 + rng() * 4, accel: 8 });
+  const types = ['sedan', 'sedan', 'sedan', 'suv', 'van', 'taxi', 'sports'];
+  const type = types[Math.floor(rng() * types.length)];
+  const car = createCar(G, rp.x, rp.z, rp.angle, 0, { isTraffic: true, driver: 'traffic', type, maxSpeed: 8 + rng() * 4, accel: 8 });
   // colour it properly (createCar takes a colour; re-colour the body)
   car.group.children[0].material = new THREE.MeshLambertMaterial({ color: [0xc23b2e, 0x2e6db8, 0xe0b02e, 0xd8d8d8, 0x4a4f55, 0x3f8a4a][Math.floor(rng() * 6)] });
   car.cruise = car.maxSpeed;
@@ -98,10 +101,23 @@ export function createTraffic(G) {
     [30, -320, 2.0], [-30, 320, -1.1], [220, 60, 0.5], [-220, -60, -1.8],
   ];
   G.parked = [];
-  for (const [x, z, a] of parkedSpots) {
-    const car = createCar(G, x, z, a, 0, { maxSpeed: 30, accel: 16 });
+  const parkedTypes = ['sedan', 'suv', 'sports', 'van', 'taxi'];
+  for (let si = 0; si < parkedSpots.length; si++) {
+    const [x, z, a] = parkedSpots[si];
+    const car = createCar(G, x, z, a, 0, { type: parkedTypes[si % parkedTypes.length], maxSpeed: 30, accel: 16 });
     car.group.children[0].material = new THREE.MeshLambertMaterial({ color: [0xc23b2e, 0x2e6db8, 0xe0b02e, 0xd8d8d8, 0x3f8a4a, 0x7a4a9e][G.parked.length % 6] });
     G.parked.push(car);
+  }
+  // pedestrians standing in chatting pairs on corners (they idle, no target)
+  const standSpots = [
+    [-44, 20], [118, 40], [-110, 100], [70, -150], [-150, -20], [170, 150], [-10, 170], [110, -80],
+  ];
+  for (const [sx, sz] of standSpots) {
+    const a = spawnPed(G, sx, sz, null, { stand: true });
+    const b = spawnPed(G, sx + 1.1, sz + 0.4, null, { stand: true });
+    a.yaw = Math.atan2(b.pos.x - a.pos.x, b.pos.z - a.pos.z);
+    b.yaw = Math.atan2(a.pos.x - b.pos.x, a.pos.z - b.pos.z);
+    a.group.rotation.y = a.yaw; b.group.rotation.y = b.yaw;
   }
   // the player's starting car, parked on the road just ahead of the spawn
   const start = createCar(G, -54, 38, 0, 0, { maxSpeed: 32, accel: 18 });
@@ -167,6 +183,9 @@ export function updateTraffic(G, dt) {
       ped.pos.z += (dz / len) * speed * dt;
       ped.yaw = Math.atan2(dx / len, dz / len);
       if (ped.fleeTimer <= 0) { ped.state = 'walk'; ped.target = null; }
+    } else if (ped.state === 'stand') {
+      // chatting on the corner: stays put, idle sway (legs handled below)
+      ped.walkPhase += dt * 1.2;
     } else {
       if (!ped.target) pickPedTarget(G, ped);
       const dx = ped.target.x - ped.pos.x, dz = ped.target.z - ped.pos.z;
@@ -178,10 +197,11 @@ export function updateTraffic(G, dt) {
     }
     collideCircle(G.city, ped.pos, 0.5);
     ped.walkPhase += dt * speed * 3;
-    const swing = Math.sin(ped.walkPhase) * 0.5;
+    const swing = ped.state === 'stand' ? 0 : Math.sin(ped.walkPhase) * 0.5;
     ped.group.userData.legL.rotation.x = swing;
     ped.group.userData.legR.rotation.x = -swing;
-    ped.group.rotation.y = ped.yaw;
+    ped.group.rotation.y = ped.state === 'stand'
+      ? ped.yaw + Math.sin(ped.walkPhase * 0.5) * 0.15 : ped.yaw;
     // a fast car or a gunshot nearby makes them flee
     for (const car of G.cars) {
       if (Math.abs(car.speed) < 5) continue;

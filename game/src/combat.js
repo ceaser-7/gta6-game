@@ -9,6 +9,14 @@ export function createCombat(G) {
   G.tracers = [];
   G.lastShot = 0;
   G.lastWantedShot = -99;
+  // pistol: 12-round magazine, R reloads (1.2 s)
+  G.ammo = 12; G.ammoMag = 12; G.reloading = false;
+  G.reload = () => {
+    if (G.reloading || G.ammo >= G.ammoMag) return;
+    G.reloading = true;
+    if (G.hud) G.hud.toast('Reloading…');
+    setTimeout(() => { G.ammo = G.ammoMag; G.reloading = false; }, 1200);
+  };
   // muzzle flash: a small additive sprite that pops at the gun for a frame
   const c = document.createElement('canvas'); c.width = 64; c.height = 64;
   const g = c.getContext('2d');
@@ -67,8 +75,11 @@ function shootTargets(G) {
 }
 
 export function shoot(G) {
+  if (G.reloading) return;
+  if (G.ammo <= 0) { G.reload(); return; }
   if (G.time - G.lastShot < 0.28) return;
   G.lastShot = G.time;
+  G.ammo--;
   const from = muzzlePos(G);
   const dir = new THREE.Vector3();
   G.camera.getWorldDirection(dir);

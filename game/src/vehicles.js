@@ -5,25 +5,48 @@ import { collideCircle } from './city.js';
 
 const CAR_COLORS = [0xc23b2e, 0x2e6db8, 0xe0b02e, 0xd8d8d8, 0x4a4f55, 0x3f8a4a, 0x7a4a9e, 0x2e8a8a];
 
-export function makeCarMesh(color, isPolice) {
+// Car body styles: same skeleton, different proportions and pace.
+const CAR_TYPES = {
+  sedan:  { bodyH: 0.55, bodyY: 0.62, bodyLen: 4.2, cabinH: 0.5, cabinY: 1.12, cabinLen: 2.0, wheelR: 0.36, maxSpeed: 30, accel: 16 },
+  sports: { bodyH: 0.45, bodyY: 0.52, bodyLen: 4.6, cabinH: 0.42, cabinY: 1.0, cabinLen: 1.8, wheelR: 0.36, maxSpeed: 34, accel: 21, spoiler: true },
+  suv:    { bodyH: 0.75, bodyY: 0.72, bodyLen: 4.4, cabinH: 0.7, cabinY: 1.38, cabinLen: 2.4, wheelR: 0.42, maxSpeed: 27, accel: 14 },
+  van:    { bodyH: 1.3, bodyY: 0.95, bodyLen: 4.4, cabinH: 0, cabinY: 0, cabinLen: 0, wheelR: 0.4, maxSpeed: 24, accel: 12 },
+  taxi:   { bodyH: 0.55, bodyY: 0.62, bodyLen: 4.2, cabinH: 0.5, cabinY: 1.12, cabinLen: 2.0, wheelR: 0.36, maxSpeed: 29, accel: 16, taxi: true },
+};
+
+export function makeCarMesh(color, isPolice, type = 'sedan') {
+  const t = CAR_TYPES[type] || CAR_TYPES.sedan;
   const g = new THREE.Group();
-  const bodyMat = new THREE.MeshLambertMaterial({ color: isPolice ? 0x14161a : color });
+  const bodyMat = new THREE.MeshLambertMaterial({ color: isPolice ? 0x14161a : (t.taxi ? 0xe8b02e : color) });
   const glassMat = new THREE.MeshLambertMaterial({ color: 0x1a2733 });
   const darkMat = new THREE.MeshLambertMaterial({ color: 0x1c1e22 });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.55, 4.2), bodyMat);
-  body.position.y = 0.62; body.castShadow = true; g.add(body);
-  const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, 2.0), glassMat);
-  cabin.position.set(0, 1.12, -0.25); cabin.castShadow = true; g.add(cabin);
-  // roof panel, bumpers, mirrors
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.08, 1.6), bodyMat);
-  roof.position.set(0, 1.4, -0.25); g.add(roof);
-  for (const z of [2.1, -2.1]) {
+  const body = new THREE.Mesh(new THREE.BoxGeometry(2.0, t.bodyH, t.bodyLen), bodyMat);
+  body.position.y = t.bodyY; body.castShadow = true; g.add(body);
+  if (t.cabinH > 0) {
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.7, t.cabinH, t.cabinLen), glassMat);
+    cabin.position.set(0, t.cabinY, -0.25); cabin.castShadow = true; g.add(cabin);
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.08, t.cabinLen - 0.4), bodyMat);
+    roof.position.set(0, t.cabinY + t.cabinH / 2 + 0.02, -0.25); g.add(roof);
+  } else {
+    // van: a windshield band and a sliding-door panel
+    const shield = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.5, 0.1), glassMat);
+    shield.position.set(0, 1.35, t.bodyLen / 2 - 0.15); g.add(shield);
+    const door = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.8, 1.4), darkMat);
+    door.position.set(1.01, 0.95, 0.2); g.add(door);
+  }
+  // bumpers, mirrors
+  for (const z of [t.bodyLen / 2, -t.bodyLen / 2]) {
     const bumper = new THREE.Mesh(new THREE.BoxGeometry(2.02, 0.18, 0.3), darkMat);
     bumper.position.set(0, 0.42, z); g.add(bumper);
   }
   for (const s of [-1, 1]) {
     const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, 0.24), darkMat);
     mirror.position.set(s * 1.02, 1.05, 0.75); g.add(mirror);
+  }
+  if (t.taxi) {
+    const sign = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.22, 0.4),
+      new THREE.MeshLambertMaterial({ color: 0xfff2b0, emissive: 0xffe98a, emissiveIntensity: 0.5 }));
+    sign.position.set(0, t.cabinY + t.cabinH / 2 + 0.14, -0.25); g.add(sign);
   }
   if (isPolice) {
     const doorMat = new THREE.MeshLambertMaterial({ color: 0xe8e8e8 });
@@ -39,18 +62,18 @@ export function makeCarMesh(color, isPolice) {
     blue.position.set(0.32, 1.52, -0.25); g.add(blue);
     g.userData.lightRed = red; g.userData.lightBlue = blue;
   }
-  const wheelGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.26, 10);
+  const wheelGeo = new THREE.CylinderGeometry(t.wheelR, t.wheelR, 0.26, 10);
   const wheelMat = new THREE.MeshLambertMaterial({ color: 0x141414 });
   const hubGeo = new THREE.CircleGeometry(0.2, 10);
   const hubMat = new THREE.MeshLambertMaterial({ color: 0xb8bec6 });
   const wheels = [];
   for (const [wx, wz] of [[-0.95, 1.35], [0.95, 1.35], [-0.95, -1.35], [0.95, -1.35]]) {
     const w = new THREE.Mesh(wheelGeo, wheelMat);
-    w.rotation.z = Math.PI / 2; w.position.set(wx, 0.36, wz);
+    w.rotation.z = Math.PI / 2; w.position.set(wx, t.wheelR, wz);
     g.add(w); wheels.push(w);
     const hub = new THREE.Mesh(hubGeo, hubMat);
     hub.rotation.y = wx < 0 ? -Math.PI / 2 : Math.PI / 2;
-    hub.position.set(wx + (wx < 0 ? -0.14 : 0.14), 0.36, wz);
+    hub.position.set(wx + (wx < 0 ? -0.14 : 0.14), t.wheelR, wz);
     g.add(hub);
   }
   const headMat = new THREE.MeshLambertMaterial({ color: 0xfff2b0, emissive: 0xffe98a, emissiveIntensity: 0.7 });
@@ -58,13 +81,13 @@ export function makeCarMesh(color, isPolice) {
   const tailMatR = new THREE.MeshLambertMaterial({ color: 0xaa1111, emissive: 0x881111, emissiveIntensity: 0.6 });
   for (const s of [-1, 1]) {
     const h = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.14, 0.08), headMat);
-    h.position.set(s * 0.62, 0.62, 2.12); g.add(h);
-    const t = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.14, 0.08), s < 0 ? tailMatL : tailMatR);
-    t.position.set(s * 0.62, 0.62, -2.12); g.add(t);
+    h.position.set(s * 0.62, 0.62, t.bodyLen / 2 + 0.02); g.add(h);
+    const tl = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.14, 0.08), s < 0 ? tailMatL : tailMatR);
+    tl.position.set(s * 0.62, 0.62, -t.bodyLen / 2 - 0.02); g.add(tl);
   }
   g.userData.brakeL = tailMatL; g.userData.brakeR = tailMatR;
-  // rear spoiler on the orange mission GT only
-  if (color === 0xe86a10) {
+  // rear spoiler on sports cars (and the orange mission GT)
+  if (t.spoiler || color === 0xe86a10) {
     for (const s of [-1, 1]) {
       const strut = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.22, 0.08), darkMat);
       strut.position.set(s * 0.6, 1.05, -1.95); g.add(strut);
@@ -83,16 +106,18 @@ export function makeCarMesh(color, isPolice) {
 }
 
 export function createCar(G, x, z, angle, color, opts = {}) {
-  const group = makeCarMesh(color, !!opts.isPolice);
+  const type = opts.type || 'sedan';
+  const tc = CAR_TYPES[type] || CAR_TYPES.sedan;
+  const group = makeCarMesh(color, !!opts.isPolice, type);
   group.position.set(x, 0, z);
   group.rotation.y = angle;
   G.scene.add(group);
   const car = {
     group, pos: group.position, angle, speed: 0, steer: 0,
-    color, isPolice: !!opts.isPolice, isTraffic: !!opts.isTraffic,
+    color, type, isPolice: !!opts.isPolice, isTraffic: !!opts.isTraffic,
     driver: opts.driver || null, health: 100, missionCar: !!opts.missionCar,
-    maxSpeed: opts.maxSpeed || 30, accel: opts.accel || 16,
-    targetSpeed: 0, stuck: 0,
+    maxSpeed: opts.maxSpeed || tc.maxSpeed, accel: opts.accel || tc.accel,
+    targetSpeed: 0, stuck: 0, smokeTimer: 0,
   };
   G.cars.push(car);
   return car;
@@ -152,6 +177,51 @@ export function updateSkids(G, dt) {
     slot.life -= dt;
     if (slot.life <= 0) { slot.mesh.visible = false; slot.mesh.material.opacity = 0; }
     else slot.mesh.material.opacity = 0.55 * (slot.life / 6);
+  }
+}
+
+// Damage smoke: grey puffs from the engine of a hurt car.
+export function createSmoke(G) {
+  const c = document.createElement('canvas'); c.width = 64; c.height = 64;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(32, 32, 2, 32, 32, 30);
+  grad.addColorStop(0, 'rgba(120,120,120,0.85)');
+  grad.addColorStop(1, 'rgba(120,120,120,0)');
+  g.fillStyle = grad; g.fillRect(0, 0, 64, 64);
+  const tex = new THREE.CanvasTexture(c);
+  G.smoke = [];
+  for (let i = 0; i < 40; i++) {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0, depthWrite: false }));
+    s.visible = false;
+    s.scale.set(1, 1, 1);
+    G.scene.add(s);
+    G.smoke.push({ sprite: s, life: 0 });
+  }
+  G.smokeIndex = 0;
+}
+
+function emitSmoke(G, car) {
+  if (!G.smoke) return;
+  const slot = G.smoke[G.smokeIndex];
+  G.smokeIndex = (G.smokeIndex + 1) % G.smoke.length;
+  const f = carForward(car);
+  slot.sprite.position.set(car.pos.x + f.x * 1.6, 1.2, car.pos.z + f.z * 1.6);
+  slot.sprite.scale.set(1.2, 1.2, 1);
+  slot.sprite.material.opacity = 0.7;
+  slot.sprite.visible = true;
+  slot.life = 1.1;
+}
+
+export function updateSmoke(G, dt) {
+  if (!G.smoke) return;
+  for (const slot of G.smoke) {
+    if (slot.life <= 0) continue;
+    slot.life -= dt;
+    slot.sprite.position.y += dt * 1.6;
+    const s = 1.2 + (1.1 - slot.life) * 1.4;
+    slot.sprite.scale.set(s, s, 1);
+    slot.sprite.material.opacity = Math.max(0, slot.life / 1.1) * 0.7;
+    if (slot.life <= 0) slot.sprite.visible = false;
   }
 }
 
@@ -232,6 +302,11 @@ export function stepCar(G, car, dt, isPlayer) {
     }
   }
   car.group.rotation.y = car.angle;
+  // a hurt car smokes from the engine
+  if (car.health < 40 && car.health > 0) {
+    car.smokeTimer -= dt;
+    if (car.smokeTimer <= 0) { car.smokeTimer = 0.14; emitSmoke(G, car); }
+  }
   // wheels spin + front wheels steer
   const spin = car.speed * dt * 1.6;
   const wheels = car.group.userData.wheels;

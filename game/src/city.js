@@ -55,6 +55,41 @@ function makeWaveTexture() {
   return t;
 }
 
+function makeGlassTexture(rng) {
+  // a glass tower facade: vertical strips, many lit windows
+  const c = document.createElement('canvas'); c.width = 128; c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#2c4a63'; g.fillRect(0, 0, 128, 256);
+  for (let x = 6; x < 122; x += 14) {
+    for (let y = 6; y < 250; y += 16) {
+      const lit = rng() < 0.42;
+      g.fillStyle = lit ? '#ffe9a8' : (rng() < 0.5 ? '#1d3247' : '#3a5a78');
+      g.fillRect(x, y, 9, 11);
+    }
+  }
+  g.fillStyle = 'rgba(10,18,28,0.55)';
+  for (let x = 0; x < 128; x += 14) g.fillRect(x, 0, 2, 256);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+function makeSignTexture(text, bg, fg, sub) {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = bg; g.fillRect(0, 0, 512, 128);
+  g.font = 'bold 52px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = fg; g.fillText(text, 256, sub ? 48 : 64);
+  if (sub) {
+    g.font = 'bold 26px Arial';
+    g.fillStyle = '#ffffff';
+    g.fillText(sub, 256, 96);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 function makeGroundTexture(rng) {
   const S = 2048, W = GROUND; // world [-450, 450] -> [0, 2048]
   const px = v => (v + W / 2) / W * S;
@@ -200,6 +235,9 @@ export function createCity(scene) {
   const acMat = new THREE.MeshLambertMaterial({ color: 0x8a8f96 });
   const towerMat = new THREE.MeshLambertMaterial({ color: 0x6e4a2f });
   const materials = winTex.map((t, i) => new THREE.MeshLambertMaterial({ map: t, color: tints[i % tints.length] }));
+  const glassMat = new THREE.MeshLambertMaterial({ map: makeGlassTexture(mulberry32(77)), color: 0xd8e8f2 });
+  city.neonMats = []; // emissive sign/billboard materials, glow harder at night
+  city.lampGlowMat = null; // set below with the lamps
   const acGeo = new THREE.BoxGeometry(2.2, 1, 1.6);
   const towerGeo = new THREE.CylinderGeometry(1.6, 1.6, 3, 8);
   const towerRoofGeo = new THREE.ConeGeometry(1.9, 1.6, 8);
@@ -217,6 +255,23 @@ export function createCity(scene) {
     roof.castShadow = true;
     scene.add(roof);
     city.colliders.push({ minX: cx - w / 2, maxX: cx + w / 2, minZ: cz - d / 2, maxZ: cz + d / 2 });
+    // tall towers step back as they rise: a smaller upper slab + a crown
+    if (h >= 40) {
+      const s1 = new THREE.Mesh(boxGeo, mat);
+      s1.scale.set(w * 0.62, h * 0.32, d * 0.62);
+      s1.position.set(cx, h + h * 0.16, cz);
+      s1.castShadow = true; scene.add(s1);
+      const s2 = new THREE.Mesh(boxGeo, mat);
+      s2.scale.set(w * 0.36, h * 0.14, d * 0.36);
+      s2.position.set(cx, h + h * 0.32 + h * 0.07, cz);
+      s2.castShadow = true; scene.add(s2);
+      // a lit beacon on the very tallest towers
+      if (h >= 80) {
+        const bc = new THREE.Mesh(new THREE.SphereGeometry(0.7, 8, 6),
+          new THREE.MeshBasicMaterial({ color: 0xff3344 }));
+        bc.position.set(cx, h + h * 0.46 + 0.8, cz); scene.add(bc);
+      }
+    }
     // rooftop props: AC box on many roofs, a water tower on a few
     const r = rng();
     if (r < 0.45) {
@@ -247,12 +302,15 @@ export function createCity(scene) {
       const mat = materials[Math.floor(rng() * materials.length)];
       const lmKey = `${i},${j}`;
       if (landmarks[lmKey]) {
-        addBuilding(cx, cz, 26, 26, landmarks[lmKey], materials[1]);
+        // the tallest tower is glass; the other two are setback towers
+        addBuilding(cx, cz, 26, 26, landmarks[lmKey], lmKey === '4,-4' ? glassMat : materials[1]);
         continue;
       }
       if (district === 'Downtown') {
         const h = 28 + rng() * 46;
-        addBuilding(cx, cz, 20 + rng() * 8, 20 + rng() * 8, h, mat);
+        // one in four tall Downtown towers is glass
+        const m2 = (h > 52 && rng() < 0.3) ? glassMat : mat;
+        addBuilding(cx, cz, 20 + rng() * 8, 20 + rng() * 8, h, m2);
         if (rng() < 0.5) addBuilding(cx + (rng() < 0.5 ? -14 : 14), cz + (rng() < 0.5 ? -12 : 12), 8, 8, 10 + rng() * 8, mat);
       } else if (district === 'Harbor') {
         addBuilding(cx, cz, 26 + rng() * 4, 18 + rng() * 6, 9 + rng() * 7, mat);
@@ -269,6 +327,7 @@ export function createCity(scene) {
   const lampPole = new THREE.CylinderGeometry(0.12, 0.16, 6, 6);
   const lampMat = new THREE.MeshLambertMaterial({ color: 0x2c3138 });
   const lampGlow = new THREE.MeshLambertMaterial({ color: 0xffe9a8, emissive: 0xffdf8a, emissiveIntensity: 0.9 });
+  city.lampGlowMat = lampGlow;
   const lampHead = new THREE.SphereGeometry(0.35, 8, 6);
   for (let i = -halfBlocks; i <= halfBlocks; i++) {
     for (let j = -halfBlocks; j <= halfBlocks; j++) {
@@ -278,6 +337,79 @@ export function createCity(scene) {
       pole.position.set(x, 3, z); scene.add(pole);
       const head = new THREE.Mesh(lampHead, lampGlow);
       head.position.set(x, 6.2, z); scene.add(head);
+    }
+  }
+
+  // --- neon signs + billboards (original ads only) ---
+  // a sign plane on a building face; emissive so it glows at night
+  function addSign(x, y, z, w, h, tex, ry) {
+    const mat = new THREE.MeshLambertMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.35 });
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+    m.position.set(x, y, z); m.rotation.y = ry; scene.add(m);
+    city.neonMats.push(mat);
+    return m;
+  }
+  const signs = [
+    // [block i, block j, face +z/-z, text, bg, fg, sub]
+    [2, -2, 1, 'VERDE', '#101828', '#ffd23e', 'HOTEL'],
+    [4, -4, 1, 'SUNRAY', '#3a0d0d', '#ff6a3a', 'GT — DRIVE IT'],
+    [1, -3, -1, 'COLA', '#7a1010', '#ffffff', 'PORTO VERDE'],
+    [-2, -1, 1, '24H', '#0d3a2a', '#7dff9a', 'MARKET'],
+    [3, -5, 1, 'MARINA', '#0d2a4a', '#9fd4e8', 'HOTEL & SPA'],
+    [-1, 2, -1, 'TACOS', '#4a2a0d', '#ffd23e', 'EL FARO'],
+  ];
+  for (const [bi, bj, face, text, bg, fg, sub] of signs) {
+    const cx = bi * PITCH + 27, cz = bj * PITCH + 27;
+    const h = 14 + rng() * 10;
+    addSign(cx, h, cz + face * 13.6, 16, 4, makeSignTexture(text, bg, fg, sub), face > 0 ? 0 : Math.PI);
+  }
+  // big billboards on tall Downtown buildings, facing the avenues
+  const boards = [
+    [0, -2, 0, 'PORTO VERDE', '#123f63', '#ffd23e', 'COLA — TASTE THE COAST'],
+    [2, -4, Math.PI / 2, 'SUNRAY GT', '#1c1c22', '#ff6a3a', '0–100 IN 3.9s'],
+    [-3, -2, 0, 'VERDE BANK', '#0d3a2a', '#ffffff', 'YOUR MONEY. YOUR CITY.'],
+  ];
+  for (const [bi, bj, ry, text, bg, fg, sub] of boards) {
+    const cx = bi * PITCH + 27, cz = bj * PITCH + 27;
+    const tex = makeSignTexture(text, bg, fg, sub);
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(22, 5.5),
+      new THREE.MeshLambertMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.3 }));
+    m.position.set(cx + (ry === 0 ? 0 : 13.6), 26, cz + (ry === 0 ? 13.6 : 0));
+    m.rotation.y = ry; scene.add(m);
+    city.neonMats.push(m.material);
+  }
+
+  // --- street props: hydrants, bins, bus stops ---
+  const hydGeo = new THREE.CylinderGeometry(0.22, 0.28, 0.75, 8);
+  const hydMat = new THREE.MeshLambertMaterial({ color: 0xc23b2e });
+  const hydTopGeo = new THREE.SphereGeometry(0.2, 8, 6);
+  const binGeo = new THREE.BoxGeometry(0.7, 0.95, 0.7);
+  const binMat = new THREE.MeshLambertMaterial({ color: 0x2e4a2e });
+  const benchGeo = new THREE.BoxGeometry(2.2, 0.12, 0.6);
+  const benchMat = new THREE.MeshLambertMaterial({ color: 0x6e4a2f });
+  const stopTex = makeSignTexture('BUS', '#123f63', '#ffffff', null);
+  for (let i = -halfBlocks; i <= halfBlocks; i++) {
+    for (let j = -halfBlocks; j <= halfBlocks; j++) {
+      const r = rng();
+      const x = i * PITCH + 10, z = j * PITCH + 10;
+      if (r < 0.14) { // hydrant on a corner
+        const h = new THREE.Mesh(hydGeo, hydMat);
+        h.position.set(x, 0.38, z); h.castShadow = true; scene.add(h);
+        const t = new THREE.Mesh(hydTopGeo, hydMat);
+        t.position.set(x, 0.8, z); scene.add(t);
+      } else if (r < 0.26) { // bin
+        const b = new THREE.Mesh(binGeo, binMat);
+        b.position.set(x, 0.48, z); b.castShadow = true; scene.add(b);
+      } else if (r < 0.3) { // bus stop: bench + sign pole on the avenue edge
+        const bench = new THREE.Mesh(benchGeo, benchMat);
+        bench.position.set(x, 0.55, z); bench.castShadow = true; scene.add(bench);
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 2.6, 6), lampMat);
+        pole.position.set(x + 1.4, 1.3, z); scene.add(pole);
+        const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.8),
+          new THREE.MeshLambertMaterial({ map: stopTex, emissive: 0xffffff, emissiveMap: stopTex, emissiveIntensity: 0.25 }));
+        sign.position.set(x + 1.4, 2.5, z); scene.add(sign);
+        city.neonMats.push(sign.material);
+      }
     }
   }
 

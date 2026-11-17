@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { createCity, mulberry32 } from './city.js';
 import { createPlayer, updatePlayerOnFoot, updateCamera } from './player.js';
-import { updatePlayerCar, tryEnterCar, exitCar, createSkids, updateSkids } from './vehicles.js';
+import { updatePlayerCar, tryEnterCar, exitCar, createSkids, updateSkids, createSmoke, updateSmoke } from './vehicles.js';
 import { createTraffic, updateTraffic, spawnFleeingPed } from './traffic.js';
 import { updatePolice } from './police.js';
 import { createMissions, updateMissions, failMission } from './missions.js';
@@ -23,16 +23,11 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
-// sky dome: gradient canvas texture on a big back-facing sphere + a sun disc
+// sky dome: gradient canvas texture on a big back-facing sphere + a sun disc.
+// The gradient is redrawn by the day/night cycle (see dayNight / applyDayNight).
 function createSky() {
   const c = document.createElement('canvas'); c.width = 16; c.height = 512;
   const g = c.getContext('2d');
-  const grad = g.createLinearGradient(0, 0, 0, 512);
-  grad.addColorStop(0, '#2f6fb8');
-  grad.addColorStop(0.45, '#7fb8e0');
-  grad.addColorStop(0.62, '#cfe6f2');
-  grad.addColorStop(1, '#e8b07a');
-  g.fillStyle = grad; g.fillRect(0, 0, 16, 512);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   const sky = new THREE.Mesh(
@@ -41,17 +36,58 @@ function createSky() {
   );
   sky.renderOrder = -1;
   scene.add(sky);
-  const sunDir = new THREE.Vector3(120, 180, 80).normalize();
   const disc = new THREE.Mesh(
     new THREE.CircleGeometry(42, 24),
     new THREE.MeshBasicMaterial({ color: 0xfff3c0, fog: false, transparent: true, opacity: 0.95 }),
   );
-  disc.position.copy(sunDir).multiplyScalar(1000);
+  disc.position.set(120, 180, 80).normalize().multiplyScalar(1000);
   disc.lookAt(0, 0, 0);
   scene.add(disc);
-  return sky;
+  return { sky, disc, canvas: c, ctx: g, tex };
 }
-createSky();
+const skyParts = createSky();
+
+// --- day / night cycle (240 s loop; opens at golden-hour sunset) ---
+// Keyframes from GPT-6.1 Sol (single fixed-design call, 2026-11-17): t=0 sunset,
+// 0.125 dusk, 0.25 night, 0.5 dawn, 0.75 noon. Written into the game here.
+function dayNight(t) {
+  t = ((t % 1) + 1) % 1;
+  const frames = [
+    { t: 0, sun: '#ff9b4a', intensity: 1.2, hemi: 0.55, lamps: 0.3,
+      sky: ['#344d73', '#ad7f8e', '#ffbd7a', '#74585a'] },
+    { t: 0.125, sun: '#b779a4', intensity: 0.35, hemi: 0.25, lamps: 0.85,
+      sky: ['#10142c', '#493757', '#99606b', '#533c4d'] },
+    { t: 0.25, sun: '#203b73', intensity: 0.06, hemi: 0.12, lamps: 1,
+      sky: ['#01030a', '#08152f', '#172745', '#0e1426'] },
+    { t: 0.5, sun: '#ffad65', intensity: 1.2, hemi: 0.55, lamps: 0.4,
+      sky: ['#526d97', '#d19eaa', '#ffd2a1', '#96796e'] },
+    { t: 0.75, sun: '#fff1d6', intensity: 1.5, hemi: 0.85, lamps: 0,
+      sky: ['#398ed4', '#80c6ed', '#d1e8f4', '#8caab5'] },
+  ];
+  let i = 0;
+  while (i < frames.length - 1 && t >= frames[i + 1].t) i++;
+  const a = frames[i], b = frames[(i + 1) % frames.length];
+  const end = i === frames.length - 1 ? 1 : b.t;
+  let u = (t - a.t) / (end - a.t);
+  u = u * u * (3 - 2 * u);
+  const lerp = (x, y) => x + (y - x) * u;
+  const lerpHex = (x, y) => {
+    const p = parseInt(x.slice(1), 16), q = parseInt(y.slice(1), 16);
+    return '#' + [16, 8, 0].map(shift =>
+      Math.round(lerp((p >> shift) & 255, (q >> shift) & 255)).toString(16).padStart(2, '0')).join('');
+  };
+  const skyStops = a.sky.map((color, j) => lerpHex(color, b.sky[j]));
+  return {
+    sunElevDeg: Math.sin((t - 0.25) * 2 * Math.PI) * 65,
+    sunAzDeg: 200 + t * 360,
+    sunColor: lerpHex(a.sun, b.sun),
+    sunIntensity: lerp(a.intensity, b.intensity),
+    hemiIntensity: lerp(a.hemi, b.hemi),
+    fogColor: skyStops[2],
+    skyStops,
+    lampGlow: lerp(a.lamps, b.lamps),
+  };
+}
 scene.fog = new THREE.Fog(0x9fc4e0, 300, 1200);
 const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 2400);
 
@@ -65,10 +101,45 @@ sun.shadow.camera.near = 10; sun.shadow.camera.far = 700;
 sun.shadow.bias = -0.0004;
 scene.add(sun);
 scene.add(sun.target);
-scene.add(new THREE.HemisphereLight(0xbfd9ff, 0x5a4a3a, 0.95));
+const hemi = new THREE.HemisphereLight(0xbfd9ff, 0x5a4a3a, 0.95);
+scene.add(hemi);
+
+// Apply one day/night sample: sun position + colour, sky gradient, fog, lamps, neon.
+let skyRedrawTimer = 0;
+function applyDayNight(G, dn, dt) {
+  const elev = dn.sunElevDeg * Math.PI / 180, az = dn.sunAzDeg * Math.PI / 180;
+  const dir = new THREE.Vector3(
+    Math.cos(elev) * Math.sin(az), Math.sin(elev), Math.cos(elev) * Math.cos(az));
+  G.sunDir = dir;
+  G.sun.color.set(dn.sunColor);
+  G.sun.intensity = dn.sunIntensity;
+  hemi.intensity = dn.hemiIntensity;
+  scene.fog.color.set(dn.fogColor);
+  // sun disc: follow the sun; hide it below the horizon
+  skyParts.disc.position.copy(dir).multiplyScalar(1000);
+  skyParts.disc.lookAt(0, 0, 0);
+  skyParts.disc.visible = dn.sunElevDeg > -4;
+  skyParts.disc.material.color.set(dn.sunColor);
+  // sky gradient: redraw at most every 0.25 s (cheap enough, smooth enough)
+  skyRedrawTimer += dt;
+  if (skyRedrawTimer > 0.25) {
+    skyRedrawTimer = 0;
+    const g = skyParts.ctx;
+    const grad = g.createLinearGradient(0, 0, 0, 512);
+    grad.addColorStop(0, dn.skyStops[0]);
+    grad.addColorStop(0.45, dn.skyStops[1]);
+    grad.addColorStop(0.62, dn.skyStops[2]);
+    grad.addColorStop(1, dn.skyStops[3]);
+    g.fillStyle = grad; g.fillRect(0, 0, 16, 512);
+    skyParts.tex.needsUpdate = true;
+  }
+  // lamps + neon glow harder at night
+  if (G.city.lampGlowMat) G.city.lampGlowMat.emissiveIntensity = 0.25 + dn.lampGlow * 1.6;
+  for (const m of G.city.neonMats) m.emissiveIntensity = 0.3 + dn.lampGlow * 1.2;
+}
 
 const G = {
-  scene, camera, renderer, sun, time: 0, state: 'menu', mapOpen: false,
+  scene, camera, renderer, sun, time: 0, dayT: 0, sunDir: null, state: 'menu', mapOpen: false,
   input: { keys: new Set() },
   camYaw: 0, camPitch: 0.28, camTarget: null, shake: 0,
   money: 0, wanted: 0, cars: [], peds: [], police: [], officers: [],
@@ -83,6 +154,7 @@ createMissions(G);
 createCombat(G);
 createAudio(G);
 createSkids(G);
+createSmoke(G);
 G.saveGame = () => saveGame(G);
 G.spawnFleeingPed = (x, z) => spawnFleeingPed(G, x, z);
 
@@ -109,7 +181,7 @@ G.hurtPlayer = (amount, fromPos) => {
   if (p.health <= 0) {
     p.health = 0;
     G.audio.fail();
-    G.showOver('FLATLINED', 'Mara went down. Porto Verde keeps moving without her — but the run is not over.', 'respawn');
+    G.showOver('WASTED', 'Mara went down. Porto Verde keeps moving without her — but the run is not over.', 'respawn');
   }
 };
 G.doBusted = reason => {
@@ -215,6 +287,9 @@ window.addEventListener('keydown', e => {
     document.exitPointerLock?.();
   }
   if (e.code === 'KeyM') G.audio.setMuted(!G.audio.muted);
+  if (e.code === 'KeyQ') G.audio.nextStation();
+  if (e.code === 'KeyH' && G.player.car) G.audio.horn();
+  if (e.code === 'KeyR') G.reload && G.reload();
 });
 window.addEventListener('keyup', e => G.input.keys.delete(e.code));
 canvas.addEventListener('click', () => {
@@ -236,26 +311,33 @@ window.addEventListener('resize', () => {
 });
 
 // --- the frame ---
-const clock = new THREE.Clock();
+// manual clock (THREE.Clock is deprecated in r187)
+let lastNow = performance.now();
 let saveTimer = 0;
-const sunDir = new THREE.Vector3(120, 180, 80).normalize();
 function updateSunShadow(G) {
   // keep the shadow camera centred on the player so shadows stay crisp
+  const dir = G.sunDir || new THREE.Vector3(120, 180, 80).normalize();
   const p = G.player.pos;
-  G.sun.position.set(p.x + sunDir.x * 320, sunDir.y * 320, p.z + sunDir.z * 320);
+  G.sun.position.set(p.x + dir.x * 320, Math.max(40, dir.y * 320), p.z + dir.z * 320);
   G.sun.target.position.set(p.x, 0, p.z);
   G.sun.target.updateMatrixWorld();
 }
 function animate() {
   requestAnimationFrame(animate);
-  const dt = Math.min(0.05, clock.getDelta());
+  const now = performance.now();
+  const dt = Math.min(0.05, (now - lastNow) / 1000 || 0.016);
+  lastNow = now;
   G.time += dt;
+  // day/night: 240 s loop, opens at golden-hour sunset
+  G.dayT = (G.time / 240) % 1;
+  applyDayNight(G, dayNight(G.dayT), dt);
   updateSunShadow(G);
   // water scroll
   for (const m of G.city.waterMats) { m.map.offset.x += dt * 0.02; m.map.offset.y += dt * 0.008; }
   if (G.state === 'playing' && !G.hud.dialogOpen) {
     if (G.player.onFoot) { updatePlayerOnFoot(G, dt); G.audio.engine(0); }
     else { updatePlayerCar(G, dt); updateSkids(G, dt); }
+    updateSmoke(G, dt);
     updateCamera(G, dt);
     // speed FOV kick: wider view at speed, eases back when slow
     const targetFov = G.player.car ? 62 + Math.min(9, Math.abs(G.player.car.speed) * 0.3) : 62;

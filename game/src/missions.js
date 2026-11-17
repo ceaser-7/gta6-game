@@ -1,12 +1,13 @@
 // The story: three jobs for Rook, and the debt that ends them.
 // One clear job: brief each mission, watch its objectives, and pay or fail it.
 import * as THREE from 'three';
-import { createCar } from './vehicles.js';
+import { createCar, stepCar } from './vehicles.js';
+import { showPassed } from './hud.js';
 
 const MISSIONS = [
   {
     name: 'Job 1 — The Pickup',
-    brief: 'Mara. First job. A package is waiting at the Old Town market — walk up and grab it, then bring it to the Harbor warehouse. Four minutes, and do not dawdle. The debt clock is ticking.',
+    brief: 'Mara. First job. A courier in a brown van is carrying the package to the Old Town market — tail him there. Stay close enough to keep him in sight, but do not crowd him or he will bolt. When he stops, grab the package and bring it to the Harbor warehouse. Four minutes, and do not dawdle.',
     who: 'Rook — fixer',
     reward: 400,
   },
@@ -25,7 +26,7 @@ const MISSIONS = [
 ];
 
 const TARGETS = [
-  { pickup: { x: -270, z: 270, label: 'Pick up the package' }, deliver: { x: -324, z: -270, label: 'Deliver to the Harbor warehouse' }, time: 240 },
+  { courier: { x: -54, z: -30 }, route: [[-54, 108], [-162, 108], [-162, 270], [-270, 270]], pickup: { x: -270, z: 270, label: 'Pick up the package' }, deliver: { x: -324, z: -270, label: 'Deliver to the Harbor warehouse' }, time: 240 },
   { car: { x: 270, z: -270, label: 'Steal the orange Sunray GT' }, deliver: { x: 270, z: 270, label: 'Deliver the car to the Marina lockup' }, time: 0 },
   { hideout: { x: 0, z: 400, label: 'Reach the beach hideout' }, time: 240 },
 ];
@@ -74,8 +75,17 @@ export function startMission(G, index) {
   G.hud.showDialog(def.who, def.brief, () => {
     m.stage = 'active';
     if (index === 0) {
-      m.target = t.pickup; m.stage2 = t.deliver;
-      G.hud.setObjective(`${def.name}: ${t.pickup.label}`);
+      // stage 0: tail the courier's van to the market — stay close, don't spook him
+      const courier = createCar(G, t.courier.x, t.courier.z, 0, 0, { type: 'van', driver: 'courier', maxSpeed: 12, accel: 8 });
+      courier.group.children[0].material = new THREE.MeshLambertMaterial({ color: 0x8a5a2e });
+      G.courierCar = courier;
+      m.tailCar = courier;
+      m.tailWp = 0;
+      m.tailRoute = t.route;
+      m.stage = 'tail';
+      m.target = { x: courier.pos.x, z: courier.pos.z };
+      G.hud.setObjective(`${def.name}: Tail the courier to the Old Town market — stay close, don't spook him`);
+      G.hud.toast('Follow the brown van');
     } else if (index === 1) {
       // park the getaway car in Downtown
       const car = createCar(G, t.car.x, t.car.z, 0.8, 0, { missionCar: true, maxSpeed: 34, accel: 20 });
@@ -114,7 +124,49 @@ export function updateMissions(G, dt) {
     if (G.nextBriefIn <= 0) startMission(G, G.missionIndex);
     return;
   }
-  if (!m || m.stage !== 'active') return;
+  if (!m || m.stage !== 'active') {
+    // tailing stage (Mission 1): drive the courier along his route to the market
+    if (m && m.stage === 'tail' && m.tailCar) {
+      const c = m.tailCar;
+      const p = G.player;
+      const pd = Math.hypot(p.pos.x - c.pos.x, p.pos.z - c.pos.z);
+      // too far: the courier waits for you; too close: he gets spooked and speeds up
+      let cruise = 10;
+      if (pd > 60) cruise = 0;
+      else if (pd < 5) {
+        cruise = 16;
+        if (!m.spookShown) { m.spookShown = true; G.hud.toast('Too close — back off!'); }
+      } else m.spookShown = false;
+      const wp = m.tailRoute[m.tailWp];
+      const dx = wp[0] - c.pos.x, dz = wp[1] - c.pos.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist < 8) {
+        m.tailWp++;
+        if (m.tailWp >= m.tailRoute.length) {
+          // courier arrived at the market: the package phase begins
+          c.speed = 0;
+          m.stage = 'active';
+          m.target = TARGETS[0].pickup; m.stage2 = TARGETS[0].deliver;
+          G.hud.setObjective(`${m.name}: ${TARGETS[0].pickup.label}`);
+          G.hud.toast('The courier stopped — grab the package');
+          moveBeacon(G);
+          return;
+        }
+      } else {
+        const want = Math.atan2(dx, dz);
+        let d = want - c.angle;
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        c.angle += Math.max(-2 * dt, Math.min(2 * dt, d));
+        c.speed += Math.max(-14 * dt, Math.min(10 * dt, cruise - c.speed));
+        stepCar(G, c, dt, false);
+      }
+      // beacon + objective track the moving courier
+      m.target = { x: c.pos.x, z: c.pos.z };
+      moveBeacon(G);
+    }
+    return;
+  }
   // timer
   if (m.timer > 0) {
     m.timeLeft -= dt;
@@ -176,6 +228,7 @@ function completeMission(G, line) {
   G.hud.setObjective('');
   G.hud.setTimer(0);
   G.audio.success();
+  showPassed(G, m.name, m.reward, line);
   G.hud.toast(`Job complete — +$${m.reward}`);
   G.missionIndex++;
   G.mission = null;

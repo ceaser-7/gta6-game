@@ -3,6 +3,7 @@
 // One clear job: set up each named scene after the game has started.
 import * as THREE from 'three';
 import { updatePolice } from './police.js';
+import { createCar } from './vehicles.js';
 export function shotName() {
   return new URLSearchParams(location.search).get('shot');
 }
@@ -23,11 +24,11 @@ export function setupShot(G, shot) {
     G.beacon.visible = true;
     G.beacon.position.set(270, 0, -270);
   } else if (shot === 'chase') {
-    // wanted 3, in the orange GT on the north-south avenue, police already on the tail,
-    // Downtown towers ahead — the cover shot
-    const car = G.playerStartCar;
-    car.pos.set(54, 0, 100); car.angle = Math.PI; car.speed = 20; car.maxSpeed = 34;
+    // wanted 3, in the orange GT (sports) on the north-south avenue, police already on the tail,
+    // Downtown towers + neon ahead, golden hour — the cover shot
+    const car = createCar(G, 54, 100, Math.PI, 0, { type: 'sports', maxSpeed: 34, accel: 21 });
     car.group.children[0].material = new THREE.MeshLambertMaterial({ color: 0xe86a10 });
+    car.pos.set(54, 0, 100); car.angle = Math.PI; car.speed = 20; car.maxSpeed = 34;
     p.car = car; p.onFoot = false; car.driver = 'player'; car.isTraffic = false;
     p.group.visible = false;
     p.pos.set(54, 0, 100);
