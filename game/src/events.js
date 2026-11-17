@@ -138,7 +138,9 @@ export function updateEvents(G, dt) {
     const d = Math.hypot(ped.pos.x - dest.x, ped.pos.z - dest.z);
     if (d < 2) {
       ped.state = 'stand'; ped.target = null;
-    } else if (ped.state === 'stand' || !ped.target) {
+    } else {
+      // always re-target: a ped already walking to the market must turn
+      // around when night falls, not finish the old trip first
       ped.state = 'walk';
       ped.target = { x: dest.x, z: dest.z };
     }

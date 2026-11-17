@@ -48,11 +48,13 @@ export function spawnPed(G, x, z, fleeFrom, opts = {}) {
     group, pos: group.position, yaw: rng() * Math.PI * 2,
     speed: 1.4 + rng() * 1.1, state: opts.stand ? 'stand' : 'walk', target: null,
     walkPhase: rng() * 6, downTimer: 0, fleeTimer: 0, fleeFrom: null,
-    // v5: identity + routine, so peds can talk, work shifts and live indoors
+    // v5: identity + routine, so peds can talk, work shifts and live indoors.
+    // talkAt starts at -99 (never talked): a 0 would make the 20 s talk
+    // cooldown block the FIRST conversation, since game time starts at 0.
     name: opts.name || PED_NAMES[Math.floor(rng() * PED_NAMES.length)],
     kind: opts.kind || (opts.stand ? 'stander' : 'walker'),
     namedKey: opts.namedKey || null,
-    talkAt: 0,
+    talkAt: -99,
     interior: opts.interior || null,
     routine: opts.routine || null,
     eventPed: false,
