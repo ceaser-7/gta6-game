@@ -6,7 +6,7 @@ import { createCar } from './vehicles.js';
 const MISSIONS = [
   {
     name: 'Job 1 — The Pickup',
-    brief: 'Mara. First job. A package is waiting at the Old Town market — walk up and grab it, then bring it to the Harbor warehouse. One hundred and fifty seconds, and do not dawdle. The debt clock is ticking.',
+    brief: 'Mara. First job. A package is waiting at the Old Town market — walk up and grab it, then bring it to the Harbor warehouse. Four minutes, and do not dawdle. The debt clock is ticking.',
     who: 'Rook — fixer',
     reward: 400,
   },
@@ -25,9 +25,9 @@ const MISSIONS = [
 ];
 
 const TARGETS = [
-  { pickup: { x: -108, z: 108, label: 'Pick up the package' }, deliver: { x: -162, z: -108, label: 'Deliver to the Harbor warehouse' }, time: 150 },
-  { car: { x: 162, z: -162, label: 'Steal the orange Sunray GT' }, deliver: { x: 162, z: 162, label: 'Deliver the car to the Marina lockup' }, time: 0 },
-  { hideout: { x: 0, z: 240, label: 'Reach the beach hideout' }, time: 180 },
+  { pickup: { x: -270, z: 270, label: 'Pick up the package' }, deliver: { x: -324, z: -270, label: 'Deliver to the Harbor warehouse' }, time: 240 },
+  { car: { x: 270, z: -270, label: 'Steal the orange Sunray GT' }, deliver: { x: 270, z: 270, label: 'Deliver the car to the Marina lockup' }, time: 0 },
+  { hideout: { x: 0, z: 400, label: 'Reach the beach hideout' }, time: 240 },
 ];
 
 function makeBeacon() {

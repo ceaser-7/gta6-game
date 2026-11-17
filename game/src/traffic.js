@@ -85,15 +85,17 @@ function nextWaypoint(G, car) {
 
 export function createTraffic(G) {
   G.peds = []; G.traffic = [];
-  for (let i = 0; i < 12; i++) G.traffic.push(spawnTrafficCar(G));
-  for (let i = 0; i < 18; i++) {
+  for (let i = 0; i < 18; i++) G.traffic.push(spawnTrafficCar(G));
+  for (let i = 0; i < 28; i++) {
     const p = randomSidewalkPoint(G.rng);
     spawnPed(G, p.x, p.z);
   }
-  // parked cars the player can steal
+  // parked cars the player can steal, spread across the bigger city
   const parkedSpots = [
     [-40, -100, 0.4], [120, 30, 1.2], [-120, 90, -0.6], [60, -160, 2.4],
     [-160, -30, 0.9], [160, 140, -1.4], [-20, 160, 0.2], [100, -90, 1.8],
+    [-270, 200, 0.7], [270, -200, -0.9], [-320, -200, 1.5], [320, 200, -0.3],
+    [30, -320, 2.0], [-30, 320, -1.1], [220, 60, 0.5], [-220, -60, -1.8],
   ];
   G.parked = [];
   for (const [x, z, a] of parkedSpots) {
@@ -193,7 +195,7 @@ export function updateTraffic(G, dt) {
   }
   // --- keep the streets busy: top up stolen traffic cars ---
   const active = G.traffic.filter(c => c.driver === 'traffic').length;
-  for (let i = active; i < 12; i++) G.traffic.push(spawnTrafficCar(G));
+  for (let i = active; i < 18; i++) G.traffic.push(spawnTrafficCar(G));
   // --- cars hitting pedestrians ---
   for (const car of G.cars) {
     if (Math.abs(car.speed) < 3) continue;

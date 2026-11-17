@@ -2,7 +2,7 @@
 // One clear job: turn the wanted level into police that chase, ram and arrest.
 import * as THREE from 'three';
 import { createCar, stepCar } from './vehicles.js';
-import { randomRoadPoint, randomSidewalkPoint, collideCircle } from './city.js';
+import { randomRoadPoint, randomSidewalkPoint, collideCircle, HALF } from './city.js';
 import { spawnPed } from './traffic.js';
 
 function spawnPoliceCar(G) {
@@ -14,8 +14,8 @@ function spawnPoliceCar(G) {
     const d = 60 + rng() * 40;
     x = G.player.pos.x + Math.cos(a) * d;
     z = G.player.pos.z + Math.sin(a) * d;
-    x = Math.max(-210, Math.min(210, x));
-    z = Math.max(-210, Math.min(210, z));
+    x = Math.max(-HALF, Math.min(HALF, x));
+    z = Math.max(-HALF, Math.min(HALF, z));
     if (Math.abs(x) > 10 || Math.abs(z) > 10) break;
   }
   const rp = randomRoadPoint(rng);

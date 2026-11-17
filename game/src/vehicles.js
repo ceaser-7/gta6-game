@@ -9,10 +9,22 @@ export function makeCarMesh(color, isPolice) {
   const g = new THREE.Group();
   const bodyMat = new THREE.MeshLambertMaterial({ color: isPolice ? 0x14161a : color });
   const glassMat = new THREE.MeshLambertMaterial({ color: 0x1a2733 });
+  const darkMat = new THREE.MeshLambertMaterial({ color: 0x1c1e22 });
   const body = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.55, 4.2), bodyMat);
-  body.position.y = 0.62; g.add(body);
+  body.position.y = 0.62; body.castShadow = true; g.add(body);
   const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, 2.0), glassMat);
-  cabin.position.set(0, 1.12, -0.25); g.add(cabin);
+  cabin.position.set(0, 1.12, -0.25); cabin.castShadow = true; g.add(cabin);
+  // roof panel, bumpers, mirrors
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.08, 1.6), bodyMat);
+  roof.position.set(0, 1.4, -0.25); g.add(roof);
+  for (const z of [2.1, -2.1]) {
+    const bumper = new THREE.Mesh(new THREE.BoxGeometry(2.02, 0.18, 0.3), darkMat);
+    bumper.position.set(0, 0.42, z); g.add(bumper);
+  }
+  for (const s of [-1, 1]) {
+    const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, 0.24), darkMat);
+    mirror.position.set(s * 1.02, 1.05, 0.75); g.add(mirror);
+  }
   if (isPolice) {
     const doorMat = new THREE.MeshLambertMaterial({ color: 0xe8e8e8 });
     for (const s of [-1, 1]) {
@@ -29,18 +41,36 @@ export function makeCarMesh(color, isPolice) {
   }
   const wheelGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.26, 10);
   const wheelMat = new THREE.MeshLambertMaterial({ color: 0x141414 });
+  const hubGeo = new THREE.CircleGeometry(0.2, 10);
+  const hubMat = new THREE.MeshLambertMaterial({ color: 0xb8bec6 });
   const wheels = [];
   for (const [wx, wz] of [[-0.95, 1.35], [0.95, 1.35], [-0.95, -1.35], [0.95, -1.35]]) {
     const w = new THREE.Mesh(wheelGeo, wheelMat);
     w.rotation.z = Math.PI / 2; w.position.set(wx, 0.36, wz);
     g.add(w); wheels.push(w);
+    const hub = new THREE.Mesh(hubGeo, hubMat);
+    hub.rotation.y = wx < 0 ? -Math.PI / 2 : Math.PI / 2;
+    hub.position.set(wx + (wx < 0 ? -0.14 : 0.14), 0.36, wz);
+    g.add(hub);
   }
   const headMat = new THREE.MeshLambertMaterial({ color: 0xfff2b0, emissive: 0xffe98a, emissiveIntensity: 0.7 });
+  const tailMatL = new THREE.MeshLambertMaterial({ color: 0xaa1111, emissive: 0x881111, emissiveIntensity: 0.6 });
+  const tailMatR = new THREE.MeshLambertMaterial({ color: 0xaa1111, emissive: 0x881111, emissiveIntensity: 0.6 });
   for (const s of [-1, 1]) {
     const h = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.14, 0.08), headMat);
     h.position.set(s * 0.62, 0.62, 2.12); g.add(h);
-    const t = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.14, 0.08), new THREE.MeshLambertMaterial({ color: 0xaa1111, emissive: 0x881111, emissiveIntensity: 0.6 }));
+    const t = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.14, 0.08), s < 0 ? tailMatL : tailMatR);
     t.position.set(s * 0.62, 0.62, -2.12); g.add(t);
+  }
+  g.userData.brakeL = tailMatL; g.userData.brakeR = tailMatR;
+  // rear spoiler on the orange mission GT only
+  if (color === 0xe86a10) {
+    for (const s of [-1, 1]) {
+      const strut = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.22, 0.08), darkMat);
+      strut.position.set(s * 0.6, 1.05, -1.95); g.add(strut);
+    }
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.06, 0.4), darkMat);
+    wing.position.set(0, 1.18, -1.95); g.add(wing);
   }
   const shadow = new THREE.Mesh(
     new THREE.CircleGeometry(1.6, 20),
@@ -66,6 +96,63 @@ export function createCar(G, x, z, angle, color, opts = {}) {
   };
   G.cars.push(car);
   return car;
+}
+
+export function setBrakeLights(car, braking) {
+  const u = car.group.userData;
+  if (!u.brakeL || !u.brakeR) return;
+  u.brakeL.emissiveIntensity = braking ? 2.4 : 0.6;
+  u.brakeR.emissiveIntensity = braking ? 2.4 : 0.6;
+}
+
+// Skid marks: a reusable pool of fading dark quads dropped by the rear wheels.
+export function createSkids(G) {
+  G.skids = [];
+  G.skidTimer = 0;
+  G.skidIndex = 0;
+  const geo = new THREE.PlaneGeometry(0.55, 1.3);
+  for (let i = 0; i < 60; i++) {
+    const mat = new THREE.MeshBasicMaterial({ color: 0x0a0a0a, transparent: true, opacity: 0 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.visible = false;
+    mesh.position.y = 0.03;
+    G.scene.add(mesh);
+    G.skids.push({ mesh, life: 0 });
+  }
+}
+
+export function updateSkids(G, dt) {
+  const car = G.player.car;
+  if (!car) return;
+  const handbraking = G.input.keys.has('Space') && Math.abs(car.speed) > 8;
+  if (handbraking) {
+    G.skidTimer += dt;
+    if (G.skidTimer >= 0.06) {
+      G.skidTimer = 0;
+      const fx = Math.sin(car.angle), fz = Math.cos(car.angle);
+      const rx = Math.cos(car.angle), rz = -Math.sin(car.angle);
+      for (const s of [-1, 1]) {
+        const slot = G.skids[G.skidIndex];
+        G.skidIndex = (G.skidIndex + 1) % G.skids.length;
+        slot.mesh.position.set(
+          car.pos.x + rx * s * 0.95 - fx * 1.35,
+          0.03,
+          car.pos.z + rz * s * 0.95 - fz * 1.35,
+        );
+        slot.mesh.rotation.z = car.angle;
+        slot.life = 6;
+        slot.mesh.visible = true;
+        slot.mesh.material.opacity = 0.55;
+      }
+    }
+  }
+  for (const slot of G.skids) {
+    if (slot.life <= 0) continue;
+    slot.life -= dt;
+    if (slot.life <= 0) { slot.mesh.visible = false; slot.mesh.material.opacity = 0; }
+    else slot.mesh.material.opacity = 0.55 * (slot.life / 6);
+  }
 }
 
 export function carForward(car) {
@@ -105,6 +192,9 @@ export function updatePlayerCar(G, dt) {
   }
   car.speed = Math.max(-9, Math.min(car.maxSpeed, car.speed));
   stepCar(G, car, dt, true);
+  // brake lights: handbrake, or reversing while moving forward
+  const braking = k.has('Space') || (back && car.speed > 0.5);
+  setBrakeLights(car, braking);
   // camera yaw follows the car gently when driving
   let d = car.angle - G.camYaw;
   while (d > Math.PI) d -= Math.PI * 2;

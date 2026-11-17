@@ -24,6 +24,7 @@ export function createPlayer(scene) {
   hairM.position.y = 1.56;
   const ponytail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.34, 0.12), hair);
   ponytail.position.set(0, 1.42, -0.22);
+  for (const m of [legL, legR, torso, armL, armR, head, hairM, ponytail]) m.castShadow = true;
   group.add(legL, legR, torso, armL, armR, head, hairM, ponytail);
 
   // soft blob shadow so she reads on the ground

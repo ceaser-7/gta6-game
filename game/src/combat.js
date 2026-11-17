@@ -9,6 +9,28 @@ export function createCombat(G) {
   G.tracers = [];
   G.lastShot = 0;
   G.lastWantedShot = -99;
+  // muzzle flash: a small additive sprite that pops at the gun for a frame
+  const c = document.createElement('canvas'); c.width = 64; c.height = 64;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(32, 32, 2, 32, 32, 30);
+  grad.addColorStop(0, 'rgba(255,255,230,1)');
+  grad.addColorStop(0.35, 'rgba(255,210,90,0.9)');
+  grad.addColorStop(1, 'rgba(255,160,40,0)');
+  g.fillStyle = grad; g.fillRect(0, 0, 64, 64);
+  const tex = new THREE.CanvasTexture(c);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+  sprite.scale.set(1.4, 1.4, 1);
+  sprite.visible = false;
+  G.scene.add(sprite);
+  G.muzzle = { sprite, life: 0 };
+}
+
+export function updateMuzzle(G, dt) {
+  const m = G.muzzle;
+  if (!m || m.life <= 0) return;
+  m.life -= dt;
+  if (m.life <= 0) { m.sprite.visible = false; }
+  else m.sprite.material.opacity = m.life / 0.06;
 }
 
 export function addTracer(G, from, to, color) {
@@ -55,6 +77,13 @@ export function shoot(G) {
   const hits = raycaster.intersectObjects(shootTargets(G), true);
   const end = hits.length ? hits[0].point.clone() : from.clone().add(dir.clone().multiplyScalar(60));
   addTracer(G, from, end, 0xffe08a);
+  // muzzle flash at the gun
+  if (G.muzzle) {
+    G.muzzle.sprite.position.copy(from);
+    G.muzzle.sprite.visible = true;
+    G.muzzle.sprite.material.opacity = 1;
+    G.muzzle.life = 0.06;
+  }
   G.audio.shot(false);
   G.lastShotAt = { x: from.x, z: from.z };
   // the noise draws attention

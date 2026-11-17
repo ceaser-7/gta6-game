@@ -3,11 +3,11 @@
 import * as THREE from 'three';
 import { createCity, mulberry32 } from './city.js';
 import { createPlayer, updatePlayerOnFoot, updateCamera } from './player.js';
-import { updatePlayerCar, tryEnterCar, exitCar } from './vehicles.js';
+import { updatePlayerCar, tryEnterCar, exitCar, createSkids, updateSkids } from './vehicles.js';
 import { createTraffic, updateTraffic, spawnFleeingPed } from './traffic.js';
 import { updatePolice } from './police.js';
 import { createMissions, updateMissions, failMission } from './missions.js';
-import { createCombat, shoot, punch, updateTracers } from './combat.js';
+import { createCombat, shoot, punch, updateTracers, updateMuzzle } from './combat.js';
 import { createHud, updateHud, setObjective, setTimer, showDialog, closeDialog, toast, flash } from './hud.js';
 import { createAudio } from './audio.js';
 import { saveGame, loadSave, hasSave, clearSave } from './save.js';
@@ -17,19 +17,58 @@ const canvas = document.getElementById('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.12;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x8ec3e8);
-scene.fog = new THREE.Fog(0x9fc4e0, 180, 640);
-const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 1200);
+// sky dome: gradient canvas texture on a big back-facing sphere + a sun disc
+function createSky() {
+  const c = document.createElement('canvas'); c.width = 16; c.height = 512;
+  const g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 0, 512);
+  grad.addColorStop(0, '#2f6fb8');
+  grad.addColorStop(0.45, '#7fb8e0');
+  grad.addColorStop(0.62, '#cfe6f2');
+  grad.addColorStop(1, '#e8b07a');
+  g.fillStyle = grad; g.fillRect(0, 0, 16, 512);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const sky = new THREE.Mesh(
+    new THREE.SphereGeometry(1100, 24, 12),
+    new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, fog: false, depthWrite: false }),
+  );
+  sky.renderOrder = -1;
+  scene.add(sky);
+  const sunDir = new THREE.Vector3(120, 180, 80).normalize();
+  const disc = new THREE.Mesh(
+    new THREE.CircleGeometry(42, 24),
+    new THREE.MeshBasicMaterial({ color: 0xfff3c0, fog: false, transparent: true, opacity: 0.95 }),
+  );
+  disc.position.copy(sunDir).multiplyScalar(1000);
+  disc.lookAt(0, 0, 0);
+  scene.add(disc);
+  return sky;
+}
+createSky();
+scene.fog = new THREE.Fog(0x9fc4e0, 300, 1200);
+const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 2400);
 
 const sun = new THREE.DirectionalLight(0xffe0b3, 1.5);
 sun.position.set(120, 180, 80);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -90; sun.shadow.camera.right = 90;
+sun.shadow.camera.top = 90; sun.shadow.camera.bottom = -90;
+sun.shadow.camera.near = 10; sun.shadow.camera.far = 700;
+sun.shadow.bias = -0.0004;
 scene.add(sun);
+scene.add(sun.target);
 scene.add(new THREE.HemisphereLight(0xbfd9ff, 0x5a4a3a, 0.95));
 
 const G = {
-  scene, camera, renderer, time: 0, state: 'menu',
+  scene, camera, renderer, sun, time: 0, state: 'menu', mapOpen: false,
   input: { keys: new Set() },
   camYaw: 0, camPitch: 0.28, camTarget: null, shake: 0,
   money: 0, wanted: 0, cars: [], peds: [], police: [], officers: [],
@@ -43,6 +82,7 @@ createTraffic(G);
 createMissions(G);
 createCombat(G);
 createAudio(G);
+createSkids(G);
 G.saveGame = () => saveGame(G);
 G.spawnFleeingPed = (x, z) => spawnFleeingPed(G, x, z);
 
@@ -155,6 +195,11 @@ function retry() {
 // --- input ---
 window.addEventListener('keydown', e => {
   if (e.repeat) return;
+  if (e.code === 'Tab') {
+    e.preventDefault();
+    if (G.state === 'playing') G.mapOpen = !G.mapOpen;
+    return;
+  }
   G.input.keys.add(e.code);
   G.audio.ensure();
   if (e.code === 'Enter' && G.hud.dialogOpen) { closeDialog(G); return; }
@@ -193,14 +238,31 @@ window.addEventListener('resize', () => {
 // --- the frame ---
 const clock = new THREE.Clock();
 let saveTimer = 0;
+const sunDir = new THREE.Vector3(120, 180, 80).normalize();
+function updateSunShadow(G) {
+  // keep the shadow camera centred on the player so shadows stay crisp
+  const p = G.player.pos;
+  G.sun.position.set(p.x + sunDir.x * 320, sunDir.y * 320, p.z + sunDir.z * 320);
+  G.sun.target.position.set(p.x, 0, p.z);
+  G.sun.target.updateMatrixWorld();
+}
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(0.05, clock.getDelta());
   G.time += dt;
+  updateSunShadow(G);
+  // water scroll
+  for (const m of G.city.waterMats) { m.map.offset.x += dt * 0.02; m.map.offset.y += dt * 0.008; }
   if (G.state === 'playing' && !G.hud.dialogOpen) {
     if (G.player.onFoot) { updatePlayerOnFoot(G, dt); G.audio.engine(0); }
-    else updatePlayerCar(G, dt);
+    else { updatePlayerCar(G, dt); updateSkids(G, dt); }
     updateCamera(G, dt);
+    // speed FOV kick: wider view at speed, eases back when slow
+    const targetFov = G.player.car ? 62 + Math.min(9, Math.abs(G.player.car.speed) * 0.3) : 62;
+    if (Math.abs(camera.fov - targetFov) > 0.1) {
+      camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 3);
+      camera.updateProjectionMatrix();
+    }
     if (G.shake > 0) {
       G.shake = Math.max(0, G.shake - dt * 1.4);
       camera.position.x += (Math.random() - 0.5) * G.shake * 0.5;
@@ -218,6 +280,7 @@ function animate() {
     if (saveTimer > 20) { saveTimer = 0; G.saveGame(); }
   }
   updateTracers(G, dt);
+  updateMuzzle(G, dt);
   for (const c of G.city.clouds) {
     c.position.x += dt * 1.2;
     if (c.position.x > 300) c.position.x = -300;
