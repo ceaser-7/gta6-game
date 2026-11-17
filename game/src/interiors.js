@@ -245,6 +245,9 @@ export function enterInterior(G, room) {
   p.group.position.copy(p.pos);
   p.group.rotation.y = p.yaw;
   G.camYaw = Math.PI;
+  // snap the orbit target to the player: without this the camera lerps
+  // from the street to the room and swings through the void for a second
+  G.camTarget = new THREE.Vector3(p.pos.x, p.pos.y + 1.2, p.pos.z);
   G.audio.door();
   G.hud.toast(`Welcome to ${room.def.name}`);
 }
@@ -262,6 +265,8 @@ function exitInterior(G) {
   p.group.position.copy(p.pos);
   p.group.rotation.y = p.yaw;
   G.camYaw = p.yaw;
+  // same snap as enterInterior — the camera must not swing through the void
+  G.camTarget = new THREE.Vector3(p.pos.x, p.pos.y + 1.2, p.pos.z);
   G.audio.door();
   G.hud.toast('Back on the street');
 }

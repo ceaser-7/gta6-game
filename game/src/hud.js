@@ -64,7 +64,7 @@ export function updateHud(G) {
       const t = Math.max(0, Math.ceil(G.race.timeLeft));
       h.race.textContent = `🏁 SUNSET SPRINT — CP ${G.race.cp}/5 — ${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
       h.race.style.display = 'block';
-    } else h.race.style.display = 'none';
+    } else { h.race.style.display = 'none'; h.race.textContent = ''; }
   }
   drawMinimap(G);
   drawCompass(G);
