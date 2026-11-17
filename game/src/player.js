@@ -129,7 +129,20 @@ export function updateCamera(G, dt) {
   G.camTarget.lerp(new THREE.Vector3(target.x, target.y + 1.2, target.z), Math.min(1, dt * 8));
   const cx = G.camTarget.x - Math.sin(G.camYaw) * Math.cos(G.camPitch) * dist;
   const cz = G.camTarget.z - Math.cos(G.camYaw) * Math.cos(G.camPitch) * dist;
-  const cy = G.camTarget.y + height * 0.5 + Math.sin(G.camPitch) * dist;
-  cam.position.set(cx, cy, cz);
+  let cy = G.camTarget.y + height * 0.5 + Math.sin(G.camPitch) * dist;
+  // v5: inside a room the chase camera must stay inside the walls — the
+  // player often stands a metre from the door, so a 3.2 m camera behind
+  // them would sit outside the room, staring at the wall's back
+  if (G.interior) {
+    const b = G.interior.city.bounds;
+    const cl = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    cam.position.set(
+      cl(cx, b.minX + 0.3, b.maxX - 0.3),
+      cl(cy, 0.5, 4.6),
+      cl(cz, b.minZ + 0.3, b.maxZ - 0.3),
+    );
+  } else {
+    cam.position.set(cx, cy, cz);
+  }
   cam.lookAt(G.camTarget.x, G.camTarget.y + 0.4, G.camTarget.z);
 }

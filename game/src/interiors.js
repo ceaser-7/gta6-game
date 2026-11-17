@@ -240,7 +240,9 @@ export function enterInterior(G, room) {
   const { d } = room.def.size;
   G.interior = { room, city: room.city };
   const p = G.player;
-  p.pos.set(cx, 0, cz + d / 2 - 1.5);
+  // 3 m inside the door, not 1.5: the chase camera sits 3.2 m behind the
+  // player, and at 1.5 m it would be squeezed against the south wall
+  p.pos.set(cx, 0, cz + d / 2 - 3);
   p.yaw = Math.PI; // facing north, into the room
   p.group.position.copy(p.pos);
   p.group.rotation.y = p.yaw;
