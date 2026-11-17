@@ -51,8 +51,14 @@ export function makeCarMesh(color, isPolice, type = 'sedan') {
   body.position.y = t.bodyY; body.castShadow = true; g.add(body);
   addCarDetails(g, t, bodyMat, glassMat, darkMat);
   if (t.cabinH > 0) {
-    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.7, t.cabinH, t.cabinLen), glassMat);
+    // v4: painted cabin so the dark side-glass panels read as windows (v3's
+    // all-glass cabin was one dark box); windshield + rear window in glass.
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.7, t.cabinH, t.cabinLen), bodyMat);
     cabin.position.set(0, t.cabinY, -0.25); cabin.castShadow = true; g.add(cabin);
+    const shield = new THREE.Mesh(new THREE.BoxGeometry(1.5, t.cabinH * 0.75, 0.06), glassMat);
+    shield.position.set(0, t.cabinY, -0.25 + t.cabinLen / 2 + 0.01); shield.rotation.x = -0.18; g.add(shield);
+    const rear = new THREE.Mesh(new THREE.BoxGeometry(1.5, t.cabinH * 0.75, 0.06), glassMat);
+    rear.position.set(0, t.cabinY, -0.25 - t.cabinLen / 2 - 0.01); rear.rotation.x = 0.18; g.add(rear);
     const roof = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.08, t.cabinLen - 0.4), bodyMat);
     roof.position.set(0, t.cabinY + t.cabinH / 2 + 0.02, -0.25); g.add(roof);
   } else {

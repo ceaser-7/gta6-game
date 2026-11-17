@@ -65,8 +65,10 @@ export function spawnTrafficCar(G) {
   const types = ['sedan', 'sedan', 'sedan', 'suv', 'van', 'taxi', 'sports'];
   const type = types[Math.floor(rng() * types.length)];
   const car = createCar(G, rp.x, rp.z, rp.angle, 0, { isTraffic: true, driver: 'traffic', type, maxSpeed: 8 + rng() * 4, accel: 8 });
-  // colour it properly (createCar takes a colour; re-colour the body, keeping the Phong sheen)
-  car.group.children[0].material = new THREE.MeshPhongMaterial({ color: [0x9e3b2e, 0x33567a, 0xb08d2e, 0xb0b0b0, 0x3f444a, 0x3f6b46][Math.floor(rng() * 6)], shininess: 60, specular: 0x555555 });
+  // colour it properly (createCar takes a colour; re-colour the paint — mutate
+  // the shared body material so the cabin, hood, deck and roof match the body;
+  // v4 bug: replacing children[0].material left the cabin black)
+  car.group.children[0].material.color.set([0x9e3b2e, 0x33567a, 0xb08d2e, 0xb0b0b0, 0x3f444a, 0x3f6b46][Math.floor(rng() * 6)]);
   car.cruise = car.maxSpeed;
   car.wp = nextWaypoint(G, car);
   return car;
@@ -101,7 +103,7 @@ export function createTraffic(G) {
   for (let i = 0; i < 8; i++) { // extra traffic near the start (-54, 30)
     const rp = nearPlayerRoadPoint(G.rng, -54, 30, 160);
     const car = createCar(G, rp.x, rp.z, rp.angle, 0, { isTraffic: true, driver: 'traffic', type: 'sedan', maxSpeed: 8 + G.rng() * 4, accel: 8 });
-    car.group.children[0].material = new THREE.MeshPhongMaterial({ color: [0x9e3b2e, 0x33567a, 0xb08d2e, 0xb0b0b0, 0x3f444a, 0x3f6b46][Math.floor(G.rng() * 6)], shininess: 60, specular: 0x555555 });
+    car.group.children[0].material.color.set([0x9e3b2e, 0x33567a, 0xb08d2e, 0xb0b0b0, 0x3f444a, 0x3f6b46][Math.floor(G.rng() * 6)]);
     car.cruise = car.maxSpeed;
     car.wp = nextWaypoint(G, car);
     G.traffic.push(car);
@@ -122,7 +124,7 @@ export function createTraffic(G) {
   for (let si = 0; si < parkedSpots.length; si++) {
     const [x, z, a] = parkedSpots[si];
     const car = createCar(G, x, z, a, 0, { type: parkedTypes[si % parkedTypes.length], maxSpeed: 30, accel: 16 });
-    car.group.children[0].material = new THREE.MeshPhongMaterial({ color: [0x9e3b2e, 0x33567a, 0xb08d2e, 0xb0b0b0, 0x3f6b46, 0x5f4a6e][G.parked.length % 6], shininess: 60, specular: 0x555555 });
+    car.group.children[0].material.color.set([0x9e3b2e, 0x33567a, 0xb08d2e, 0xb0b0b0, 0x3f6b46, 0x5f4a6e][G.parked.length % 6]);
     G.parked.push(car);
   }
   // pedestrians standing in chatting pairs on corners (they idle, no target)
@@ -138,7 +140,7 @@ export function createTraffic(G) {
   }
   // the player's starting car, parked on the road just ahead of the spawn
   const start = createCar(G, -54, 38, 0, 0, { maxSpeed: 32, accel: 18 });
-  start.group.children[0].material = new THREE.MeshPhongMaterial({ color: 0x1f6f6b, shininess: 60, specular: 0x555555 });
+  start.group.children[0].material.color.set(0x1f6f6b);
   G.playerStartCar = start;
 }
 

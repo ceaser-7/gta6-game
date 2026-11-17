@@ -199,14 +199,17 @@ export function updatePolice(G, dt) {
     }
   } else if (G.roadblock) removeRoadblock(G);
   // --- losing the cops: out of sight for a while, and the heat drops ---
+  // v4: relaxed (v3: 70/40/10 s) — pursuit cars actively close in, so the old
+  // rule almost never fired; hiding 12 s left wanted at 3 in the v3/v4 probes.
+  // Driving away fast now keeps you clear long enough to cool off.
   let nearestOfficer = 1e9;
   for (const o of G.officers) {
     nearestOfficer = Math.min(nearestOfficer, Math.hypot(o.pos.x - G.player.pos.x, o.pos.z - G.player.pos.z));
   }
-  if (G.wanted > 0 && nearest > 70 && nearestOfficer > 40) {
+  if (G.wanted > 0 && nearest > 50 && nearestOfficer > 30) {
     G.hiddenTimer = (G.hiddenTimer || 0) + dt;
     if (G.hiddenTimer > 6 && !G.losingShown) { G.losingShown = true; G.hud.toast('You are losing them — stay out of sight!'); }
-    if (G.hiddenTimer > 10) {
+    if (G.hiddenTimer > 8) {
       G.hiddenTimer = 0; G.losingShown = false;
       G.setWanted(G.wanted - 1);
       if (G.wanted === 0) G.hud.toast('You lost them.');

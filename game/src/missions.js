@@ -79,7 +79,7 @@ export function startMission(G, index) {
     if (index === 0) {
       // stage 0: tail the courier's van to the market — stay close, don't spook him
       const courier = createCar(G, t.courier.x, t.courier.z, 0, 0, { type: 'van', driver: 'courier', maxSpeed: 15, accel: 8 });
-      courier.group.children[0].material = new THREE.MeshPhongMaterial({ color: 0x8a5a2e, shininess: 40, specular: 0x444444 });
+      courier.group.children[0].material.color.set(0x8a5a2e);
       G.courierCar = courier;
       m.tailCar = courier;
       m.tailWp = 0;
@@ -91,7 +91,7 @@ export function startMission(G, index) {
     } else if (index === 1) {
       // park the getaway car in Downtown
       const car = createCar(G, t.car.x, t.car.z, 0.8, 0, { missionCar: true, maxSpeed: 34, accel: 20 });
-      car.group.children[0].material = new THREE.MeshPhongMaterial({ color: 0xe86a10, shininess: 60, specular: 0x555555 });
+      car.group.children[0].material.color.set(0xe86a10);
       G.missionCar = car;
       m.target = t.car; m.stage2 = t.deliver;
       G.hud.setObjective(`${def.name}: ${t.car.label}`);

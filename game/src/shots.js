@@ -27,7 +27,7 @@ export function setupShot(G, shot) {
     // wanted 3, in the orange GT (sports) on the north-south avenue, police already on the tail,
     // Downtown towers + neon ahead, golden hour — the cover shot
     const car = createCar(G, 54, 100, Math.PI, 0, { type: 'sports', maxSpeed: 34, accel: 21 });
-    car.group.children[0].material = new THREE.MeshPhongMaterial({ color: 0xe86a10, shininess: 60, specular: 0x555555 });
+    car.group.children[0].material.color.set(0xe86a10);
     car.pos.set(54, 0, 100); car.angle = Math.PI; car.speed = 20; car.maxSpeed = 34;
     p.car = car; p.onFoot = false; car.driver = 'player'; car.isTraffic = false;
     p.group.visible = false;
