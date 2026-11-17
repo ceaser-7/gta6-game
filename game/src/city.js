@@ -577,9 +577,10 @@ export function collideCircle(city, p, r) {
       else if (m === pt) p.z = b.minZ - r; else p.z = b.maxZ + r;
     }
   }
-  // v5: a room passes its own bounds rect ({minX,maxX,minZ,maxZ}) so the
-  // player is clamped to the room, not to the city. Otherwise clamp to the map.
-  if (city.bounds) {
+  // v5: a room passes its own bounds RECT ({minX,maxX,minZ,maxZ}) so the
+  // player is clamped to the room, not to the city. The main city carries
+  // bounds as a NUMBER (the playable edge, 420) — only a rect object counts.
+  if (city.bounds && typeof city.bounds === 'object') {
     const b = city.bounds;
     p.x = Math.max(b.minX, Math.min(b.maxX, p.x));
     p.z = Math.max(b.minZ, Math.min(b.maxZ, p.z));
