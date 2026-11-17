@@ -203,7 +203,7 @@ function drawBigMap(G) {
   const S = 560, sc = S / (2 * BOUND + 60);
   const X = x => S / 2 + x * sc, Z = z => S / 2 + z * sc;
   g.clearRect(0, 0, S, S);
-  g.fillStyle = '#101820'; g.fillRect(0, 0, S, S);
+  g.fillStyle = '#6a5f52'; g.fillRect(0, 0, S, S); // land tone for the outer ring
   // water + sand
   g.fillStyle = '#1d6f8f';
   g.fillRect(0, 0, X(-HALF), S);
