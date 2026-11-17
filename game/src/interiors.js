@@ -223,8 +223,11 @@ export function createInteriors(G) {
     G.scene.add(marker);
     return { def, world, ...built, marker };
   });
-  // the vendors live inside their rooms (they never walk the streets)
-  const tomas = spawnPed(G, 600, 600 - 2.5, null, { name: 'Tomas', namedKey: 'tomas', kind: 'named', stand: true, interior: G.rooms[0] });
+  // the vendors live inside their rooms (they never walk the streets).
+  // Tomas stands at the WEST end of the counter so the counter's east end
+  // is a clear buy spot (the vendor talk radius and the buy zone must not
+  // overlap, or E would always talk instead of selling).
+  const tomas = spawnPed(G, 597, 600 - 2.5, null, { name: 'Tomas', namedKey: 'tomas', kind: 'named', stand: true, interior: G.rooms[0] });
   tomas.yaw = 0; tomas.group.rotation.y = 0; // faces the counter (south)
   const lena = spawnPed(G, 600 - 4, -600 - 3, null, { name: 'Lena', namedKey: 'lena', kind: 'named', stand: true, interior: G.rooms[1] });
   lena.yaw = Math.PI / 2; lena.group.rotation.y = Math.PI / 2;
