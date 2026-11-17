@@ -3,17 +3,86 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Block Dodger</title>
+<title>Porto Verde — an open-world crime game</title>
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #11141b; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0e14; font-family: 'Segoe UI', Arial, sans-serif; }
   #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-  /* Read aloud, never shown: the status line screen readers announce. */
+  #hud { position: fixed; inset: 0; pointer-events: none; color: #fff; display: none; }
+  #hud.on { display: block; }
+  .panel { position: absolute; text-shadow: 0 1px 3px rgba(0,0,0,.8); }
+  #stars { top: 12px; left: 14px; font-size: 26px; letter-spacing: 3px; color: #ffd23e; }
+  #stars .off { color: rgba(255,255,255,.28); }
+  #healthbar { top: 48px; left: 14px; width: 180px; height: 12px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.5); }
+  #healthfill { height: 100%; width: 100%; background: linear-gradient(90deg,#37d67a,#a5e34d); }
+  #money { top: 66px; left: 14px; font-size: 20px; font-weight: 700; color: #7dff9a; }
+  #minimap { top: 12px; right: 14px; width: 200px; height: 200px; border: 2px solid rgba(255,255,255,.65); border-radius: 50%; background: #101820; box-shadow: 0 0 0 3px rgba(0,0,0,.45); }
+  #objective { left: 50%; bottom: 118px; transform: translateX(-50%); font-size: 17px; font-weight: 600; background: rgba(0,0,0,.55); padding: 7px 16px; border-radius: 6px; max-width: 70vw; text-align: center; }
+  #speedo { left: 16px; bottom: 16px; font-size: 30px; font-weight: 800; }
+  #speedo small { font-size: 14px; font-weight: 600; color: #cfe3ff; }
+  #hint { right: 16px; bottom: 16px; font-size: 13px; color: #dfe9ff; background: rgba(0,0,0,.45); padding: 6px 10px; border-radius: 6px; line-height: 1.5; text-align: right; }
+  #dialog { left: 50%; top: 16%; transform: translateX(-50%); width: min(560px, 86vw); background: rgba(8,12,20,.88); border: 1px solid #ffb347; border-radius: 10px; padding: 16px 20px; display: none; }
+  #dialog .who { color: #ffb347; font-weight: 800; letter-spacing: 1px; font-size: 13px; text-transform: uppercase; }
+  #dialog .text { margin-top: 6px; font-size: 16px; line-height: 1.45; }
+  #dialog .key { margin-top: 10px; font-size: 12px; color: #9fb4d8; }
+  #toast { left: 50%; top: 34%; transform: translateX(-50%); font-size: 26px; font-weight: 800; color: #ffd23e; display: none; }
+  #vignette { position: fixed; inset: 0; pointer-events: none; display: none; background: radial-gradient(ellipse at center, transparent 55%, rgba(200,0,0,.55) 100%); }
+  #vignette.on { display: block; }
+  .screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; background: linear-gradient(160deg, #0e2a4a 0%, #123f63 45%, #c96a2b 100%); color: #fff; z-index: 5; text-align: center; }
+  .screen h1 { font-size: min(72px, 11vw); margin: 0; letter-spacing: 6px; text-shadow: 0 4px 0 rgba(0,0,0,.35); }
+  .screen h1 span { color: #ffd23e; }
+  .screen h2 { margin: 6px 0 0; font-weight: 400; letter-spacing: 3px; font-size: 15px; color: #ffe9b0; text-transform: uppercase; }
+  .screen p { max-width: 620px; line-height: 1.55; font-size: 16px; color: #eaf2ff; padding: 0 18px; }
+  .screen .controls { font-size: 13px; color: #cfe0ff; background: rgba(0,0,0,.35); border-radius: 8px; padding: 10px 16px; line-height: 1.8; }
+  .screen button { pointer-events: auto; margin: 8px 6px 0; padding: 13px 34px; font-size: 18px; font-weight: 800; letter-spacing: 1px; border: none; border-radius: 8px; cursor: pointer; background: #ffd23e; color: #1a1400; }
+  .screen button.ghost { background: rgba(255,255,255,.16); color: #fff; border: 1px solid rgba(255,255,255,.5); }
+  .screen button:hover { filter: brightness(1.1); }
+  #menu { z-index: 6; }
+  #pause, #over { display: none; background: rgba(5,8,14,.82); z-index: 6; }
+  #over h1 { color: #ff5a5a; }
   #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 </style>
 </head>
 <body>
-<canvas id="game" aria-label="Block Dodger: move the paddle left and right to dodge falling blocks and catch coins"></canvas>
+<canvas id="game" aria-label="Porto Verde: an open-world crime game. Drive, explore the city, take missions and outrun the police."></canvas>
 <p id="status" role="status" aria-live="polite"></p>
+
+<div id="hud">
+  <div class="panel" id="stars"></div>
+  <div class="panel" id="healthbar"><div id="healthfill"></div></div>
+  <div class="panel" id="money">$0</div>
+  <canvas class="panel" id="minimap" width="200" height="200"></canvas>
+  <div class="panel" id="objective"></div>
+  <div class="panel" id="speedo"></div>
+  <div class="panel" id="hint">WASD move &nbsp;·&nbsp; Mouse look<br>E enter / exit car &nbsp;·&nbsp; F punch &nbsp;·&nbsp; Click shoot<br>Shift run &nbsp;·&nbsp; Space handbrake &nbsp;·&nbsp; P pause &nbsp;·&nbsp; M mute</div>
+  <div class="panel" id="dialog"><div class="who"></div><div class="text"></div><div class="key">Press ENTER to continue</div></div>
+  <div class="panel" id="toast"></div>
+</div>
+<div id="vignette"></div>
+
+<div class="screen" id="menu">
+  <h1>PORTO <span>VERDE</span></h1>
+  <h2>An open-world crime game</h2>
+  <p>You are <b>Mara Voss</b>, getaway driver. You owe a fixer named <b>Rook</b> a debt you cannot pay — so you drive for him instead. Three jobs stand between you and a clean slate. The city is yours: steal any car, outrun the Verde PD, and do not get caught.</p>
+  <div class="controls">WASD — move / drive &nbsp;·&nbsp; Mouse — look &nbsp;·&nbsp; E — enter / exit car &nbsp;·&nbsp; F — punch &nbsp;·&nbsp; Click — shoot<br>Shift — run &nbsp;·&nbsp; Space — handbrake &nbsp;·&nbsp; P — pause &nbsp;·&nbsp; M — mute &nbsp;·&nbsp; Progress saves automatically</div>
+  <div>
+    <button id="btnStart">START ENGINE</button>
+    <button id="btnContinue" class="ghost" style="display:none">CONTINUE</button>
+  </div>
+</div>
+
+<div class="screen" id="pause">
+  <h1>PAUSED</h1>
+  <p>Porto Verde waits for no one. Well — except now.</p>
+  <div><button id="btnResume">RESUME</button><button id="btnQuit" class="ghost">SAVE &amp; QUIT TO MENU</button></div>
+</div>
+
+<div class="screen" id="over">
+  <h1 id="overTitle">BUSTED</h1>
+  <p id="overText"></p>
+  <div><button id="btnRetry">TRY AGAIN</button><button id="btnOverMenu" class="ghost">MENU</button></div>
+</div>
+
+<script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>
