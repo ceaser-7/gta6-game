@@ -6,26 +6,58 @@ import { collideCircle } from './city.js';
 const SKIN = 0xc98d64, JACKET = 0x1f6f6b, PANTS = 0x2c3242, HAIR = 0x20140e;
 
 export function createPlayer(scene) {
+  // Mara Voss, rebuilt for v4: realistic proportions, round head, shoes, hands,
+  // a collar and a pistol in her right hand. Built to the fixed design Sol was
+  // given (sol-player-prompt.txt) — Sol returned zero text on it, so it is built
+  // here by hand. Total height ~1.76, not a box figure.
   const group = new THREE.Group();
   const mat = c => new THREE.MeshLambertMaterial({ color: c });
   const skin = mat(SKIN), jacket = mat(JACKET), pants = mat(PANTS), hair = mat(HAIR);
+  const shoeMat = mat(0x1a1a1a), gunMat = mat(0x14161a);
 
-  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.55, 0.24), pants);
-  legL.position.set(-0.14, 0.28, 0); legL.geometry.translate(0, -0.27, 0);
-  const legR = legL.clone(); legR.position.x = 0.14;
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.62, 0.32), jacket);
-  torso.position.y = 0.86;
-  const armL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.55, 0.18), jacket);
-  armL.position.set(-0.38, 1.05, 0); armL.geometry.translate(0, -0.27, 0);
-  const armR = armL.clone(); armR.position.x = 0.38;
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.36, 0.32), skin);
-  head.position.y = 1.36;
-  const hairM = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.16, 0.36), hair);
-  hairM.position.y = 1.56;
+  const legGeo = new THREE.BoxGeometry(0.2, 0.85, 0.22);
+  legGeo.translate(0, -0.425, 0); // pivot at the hip
+  const legL = new THREE.Mesh(legGeo, pants);
+  legL.position.set(-0.13, 0.85, 0);
+  const legR = new THREE.Mesh(legGeo, pants);
+  legR.position.set(0.13, 0.85, 0);
+  const shoeGeo = new THREE.BoxGeometry(0.22, 0.1, 0.34);
+  for (const leg of [legL, legR]) {
+    const shoe = new THREE.Mesh(shoeGeo, shoeMat);
+    shoe.position.set(0, -0.82, 0.06);
+    leg.add(shoe);
+  }
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.55, 0.3), jacket);
+  torso.position.y = 1.15;
+  const collar = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.08, 0.32), jacket);
+  collar.position.y = 1.44;
+  const armGeo = new THREE.BoxGeometry(0.15, 0.6, 0.17);
+  armGeo.translate(0, -0.3, 0); // pivot at the shoulder
+  const armL = new THREE.Mesh(armGeo, jacket);
+  armL.position.set(-0.36, 1.38, 0);
+  const armR = new THREE.Mesh(armGeo, jacket);
+  armR.position.set(0.36, 1.38, 0);
+  const handGeo = new THREE.BoxGeometry(0.13, 0.12, 0.15);
+  for (const arm of [armL, armR]) {
+    const hand = new THREE.Mesh(handGeo, skin);
+    hand.position.set(0, -0.6, 0);
+    arm.add(hand);
+  }
+  // her pistol, in the right hand
+  const gun = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.1, 0.28), gunMat);
+  gun.position.set(0, -0.62, 0.1);
+  armR.add(gun);
+  // round head, not a box: skin sphere + hair cap + ponytail
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 14, 12), skin);
+  head.scale.y = 1.15;
+  head.position.y = 1.6;
+  const hairM = new THREE.Mesh(
+    new THREE.SphereGeometry(0.155, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), hair);
+  hairM.position.y = 1.62;
   const ponytail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.34, 0.12), hair);
-  ponytail.position.set(0, 1.42, -0.22);
-  for (const m of [legL, legR, torso, armL, armR, head, hairM, ponytail]) m.castShadow = true;
-  group.add(legL, legR, torso, armL, armR, head, hairM, ponytail);
+  ponytail.position.set(0, 1.45, -0.18);
+  for (const m of [legL, legR, torso, collar, armL, armR, head, hairM, ponytail]) m.castShadow = true;
+  group.add(legL, legR, torso, collar, armL, armR, head, hairM, ponytail);
 
   // soft blob shadow so she reads on the ground
   const shadow = new THREE.Mesh(
@@ -87,8 +119,9 @@ export function updatePlayerOnFoot(G, dt) {
 export function updateCamera(G, dt) {
   const cam = G.camera;
   const target = G.player.onFoot ? G.player.pos : (G.player.car ? G.player.car.pos : G.player.pos);
-  const dist = G.player.onFoot ? 7.5 : 11;
-  const height = G.player.onFoot ? 3.2 : 4.5;
+  // v4: closer cameras — Mara and the cars read bigger on screen (v3: 7.5/11)
+  const dist = G.player.onFoot ? 6.5 : 10;
+  const height = G.player.onFoot ? 2.8 : 4.0;
   // smooth the orbit target toward the player
   if (!G.camTarget) G.camTarget = new THREE.Vector3().copy(target);
   G.camTarget.lerp(new THREE.Vector3(target.x, target.y + 1.2, target.z), Math.min(1, dt * 8));

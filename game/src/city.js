@@ -21,20 +21,45 @@ export function mulberry32(seed) {
   };
 }
 
-function makeWindowTexture(rng, hue) {
-  const c = document.createElement('canvas'); c.width = 128; c.height = 256;
-  const g = c.getContext('2d');
-  g.fillStyle = hue; g.fillRect(0, 0, 128, 256);
-  for (let y = 10; y < 246; y += 22) {
-    for (let x = 10; x < 118; x += 18) {
-      const lit = rng() < 0.28;
-      g.fillStyle = lit ? '#ffd98a' : (rng() < 0.5 ? '#20242c' : '#2c3442');
-      g.fillRect(x, y, 11, 14);
+// Facade texture — from GPT-6.1 Sol (small fixed-design call, 2026-11-17, v4):
+// varied lit/dark windows, optional ground-floor shopfront band, grime streaks.
+function makeFacadeTexture(rng, base, opts = {}) {
+  const { lit = 0.28, floors = 6, cols = 6, groundFloor = false } = opts;
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = base;
+  ctx.fillRect(0, 0, 128, 256);
+
+  const facadeHeight = groundFloor ? 228 : 256;
+  const x0 = Math.floor((128 - (cols * 18 - 6)) / 2);
+  const y0 = Math.floor((facadeHeight - (floors * 21 - 6)) / 2);
+  for (let row = 0; row < floors; row++) {
+    for (let col = 0; col < cols; col++) {
+      ctx.fillStyle = rng() < lit ? '#ffd98a' : (rng() < 0.5 ? '#232a33' : '#2e3844');
+      ctx.fillRect(x0 + col * 18, y0 + row * 21, 12, 15);
     }
   }
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
+
+  if (groundFloor) {
+    ctx.fillStyle = '#1c222b';
+    ctx.fillRect(0, 228, 128, 28);
+    ctx.fillStyle = rng() < 0.5 ? '#7a3a2a' : '#2a4a3a';
+    ctx.fillRect(0, 228, 128, 4);
+  }
+
+  ctx.fillStyle = 'rgba(0,0,0,0.06)';
+  for (let i = 0; i < 6; i++) {
+    ctx.fillRect(Math.floor(rng() * 126), 0, 3, 256);
+  }
+  ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, 126, 254);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
 }
 
 function makeWaveTexture() {
@@ -91,12 +116,15 @@ function makeSignTexture(text, bg, fg, sub) {
 }
 
 function makeGroundTexture(rng) {
+  // v4 rewrite (Sol returned zero text on this one, so it is built here to the
+  // fixed design): asphalt is MID-GREY #4a4f55 — v3's #2d3138 rendered as a black
+  // void — with noise, worn patches and brighter markings so roads read as roads.
   const S = 2048, W = GROUND; // world [-450, 450] -> [0, 2048]
   const px = v => (v + W / 2) / W * S;
   const c = document.createElement('canvas'); c.width = S; c.height = S;
   const g = c.getContext('2d');
-  // base: warm concrete
-  g.fillStyle = '#8d8a7c'; g.fillRect(0, 0, S, S);
+  // base: muted warm concrete
+  g.fillStyle = '#8d887a'; g.fillRect(0, 0, S, S);
   // water: west strip and south strip
   g.fillStyle = '#1d6f8f';
   g.fillRect(0, 0, px(-HALF), S);
@@ -113,15 +141,30 @@ function makeGroundTexture(rng) {
   // sand beach along the south edge
   g.fillStyle = '#dcc491';
   g.fillRect(px(-HALF), px(HALF), S - px(-HALF), px(HALF + 24) - px(HALF));
-  // roads
-  g.fillStyle = '#2d3138';
+  // roads: mid-grey asphalt, never near-black
+  g.fillStyle = '#4a4f55';
   for (let i = -GRID_N / 2; i <= GRID_N / 2; i++) {
     const c0 = i * PITCH;
     g.fillRect(px(c0 - ROAD_HALF), 0, px(c0 + ROAD_HALF) - px(c0 - ROAD_HALF), S);
     g.fillRect(0, px(c0 - ROAD_HALF), S, px(c0 + ROAD_HALF) - px(c0 - ROAD_HALF));
   }
+  // asphalt noise: light and dark speckle so the road has a surface
+  for (let i = 0; i < 4000; i++) {
+    const x = rng() * S, y = rng() * S;
+    g.fillStyle = rng() < 0.5 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.08)';
+    g.fillRect(x, y, 2, 2);
+  }
+  // worn patches on the roads
+  for (let i = 0; i < 24; i++) {
+    const street = (Math.floor(rng() * (GRID_N + 1)) - GRID_N / 2) * PITCH;
+    const along = (rng() - 0.5) * 2 * HALF;
+    const w = 8 + rng() * 22, h = 5 + rng() * 10;
+    g.fillStyle = 'rgba(0,0,0,0.10)';
+    if (rng() < 0.5) g.fillRect(px(street - w / 2), px(along - h / 2), px(w) - px(0), px(h) - px(0));
+    else g.fillRect(px(along - h / 2), px(street - w / 2), px(h) - px(0), px(w) - px(0));
+  }
   // road edge lines (white) and centre dashes (yellow)
-  g.strokeStyle = 'rgba(255,255,255,0.55)'; g.lineWidth = 1.5;
+  g.strokeStyle = 'rgba(255,255,255,0.65)'; g.lineWidth = 2;
   for (let i = -GRID_N / 2; i <= GRID_N / 2; i++) {
     const c0 = i * PITCH;
     for (const off of [-ROAD_HALF + 0.8, ROAD_HALF - 0.8]) {
@@ -143,7 +186,7 @@ function makeGroundTexture(rng) {
     for (let j = -halfBlocks; j < halfBlocks; j++) {
       const cx = i * PITCH + 27, cz = j * PITCH + 27;
       const x0 = px(cx - 27 + ROAD_HALF), z0 = px(cz - 27 + ROAD_HALF), s = px(cx + 27 - ROAD_HALF) - x0;
-      g.fillStyle = '#b3ab97'; g.fillRect(x0, z0, s, s); // sidewalk (inset by the road half-width so the roads stay visible)
+      g.fillStyle = '#a89f8c'; g.fillRect(x0, z0, s, s); // sidewalk (inset by the road half-width so the roads stay visible)
       let inner = '#9a938a';
       if (i === 0 && j === 0) inner = '#5d8a4a';           // central park
       else if (i === -5 && j === 5) inner = '#5d8a4a';      // riverside park
@@ -223,18 +266,22 @@ export function createCity(scene) {
   mkWater(GROUND - 72, 72, 36, HALF + 36, 48, 4);        // south strip
 
   // --- buildings ---
-  const winTex = [
-    makeWindowTexture(mulberry32(11), '#cbb9a0'),
-    makeWindowTexture(mulberry32(23), '#a8b4c4'),
-    makeWindowTexture(mulberry32(37), '#d8c49a'),
-    makeWindowTexture(mulberry32(51), '#b9a58e'),
-  ];
-  const tints = [0xffffff, 0xf2e2c8, 0xd8c2b0, 0xb9c4cc, 0xe0b090, 0xc9d4de];
+  // v4: facades vary — Sol's makeFacadeTexture (muted bases, varied lit windows,
+  // ground-floor shopfronts) on the front/back faces, a plainer few-window texture
+  // on the sides, so buildings stop being the same grid on every face.
+  const facadeBases = ['#b7a99a', '#a8b0b8', '#c0b49a', '#a89a8c', '#b0a89e', '#9aa5ad', '#c4b49c', '#8f9aa3'];
+  const facadeMats = facadeBases.map(b =>
+    new THREE.MeshLambertMaterial({ map: makeFacadeTexture(mulberry32(11 + facadeBases.indexOf(b) * 7), b, { lit: 0.28, floors: 6, cols: 6, groundFloor: facadeBases.indexOf(b) % 2 === 0 }) }));
+  const sideMats = ['#a89a8c', '#9aa5ad', '#b0a89e', '#8f9aa3'].map((b, i) =>
+    new THREE.MeshLambertMaterial({ map: makeFacadeTexture(mulberry32(91 + i * 13), b, { lit: 0.2, floors: 8, cols: 4, groundFloor: false }) }));
   const boxGeo = new THREE.BoxGeometry(1, 1, 1);
   const roofMat = new THREE.MeshLambertMaterial({ color: 0x3a3f46 });
   const acMat = new THREE.MeshLambertMaterial({ color: 0x8a8f96 });
   const towerMat = new THREE.MeshLambertMaterial({ color: 0x6e4a2f });
-  const materials = winTex.map((t, i) => new THREE.MeshLambertMaterial({ map: t, color: tints[i % tints.length] }));
+  const balconyGeo = new THREE.BoxGeometry(3, 0.18, 1.2);
+  const balconyMat = new THREE.MeshLambertMaterial({ color: 0x6a6258 });
+  const awningGeo = new THREE.BoxGeometry(1, 0.12, 1.4);
+  const awningMats = [new THREE.MeshLambertMaterial({ color: 0x7a3a2a }), new THREE.MeshLambertMaterial({ color: 0x2a4a3a })];
   const glassMat = new THREE.MeshLambertMaterial({ map: makeGlassTexture(mulberry32(77)), color: 0xd8e8f2 });
   city.neonMats = []; // emissive sign/billboard materials, glow harder at night
   city.lampGlowMat = null; // set below with the lamps
@@ -243,7 +290,11 @@ export function createCity(scene) {
   const towerRoofGeo = new THREE.ConeGeometry(1.9, 1.6, 8);
 
   function addBuilding(cx, cz, w, d, h, mat) {
-    const m = new THREE.Mesh(boxGeo, mat);
+    // mat is [sideMat, facadeMat] or a single material (glass towers)
+    const mats = Array.isArray(mat)
+      ? [mat[0], mat[0], roofMat, roofMat, mat[1], mat[1]]
+      : mat;
+    const m = new THREE.Mesh(boxGeo, mats);
     m.scale.set(w, h, d);
     m.position.set(cx, h / 2, cz);
     m.castShadow = true; m.receiveShadow = true;
@@ -255,31 +306,52 @@ export function createCity(scene) {
     roof.castShadow = true;
     scene.add(roof);
     city.colliders.push({ minX: cx - w / 2, maxX: cx + w / 2, minZ: cz - d / 2, maxZ: cz + d / 2 });
+    // balconies on low residential blocks: thin slabs on the front face
+    if (h < 25 && h > 10 && rng() < 0.6) {
+      const floors = Math.max(1, Math.floor(h / 7));
+      for (let f = 0; f < floors; f++) {
+        if (rng() < 0.5) continue;
+        const bal = new THREE.Mesh(balconyGeo, balconyMat);
+        bal.position.set(cx + (rng() - 0.5) * (w - 5), 4 + f * 7, cz + d / 2 + 0.6);
+        bal.castShadow = true;
+        scene.add(bal);
+      }
+    }
+    // shop awning on the front of low street-facing buildings
+    if (h < 20 && rng() < 0.4) {
+      const awn = new THREE.Mesh(awningGeo, awningMats[Math.floor(rng() * awningMats.length)]);
+      awn.scale.x = Math.max(3, w * 0.45);
+      awn.position.set(cx, 3.4, cz + d / 2 + 0.6);
+      awn.rotation.x = -0.35;
+      scene.add(awn);
+    }
     // tall towers step back as they rise: a smaller upper slab + a crown
     if (h >= 40) {
-      const s1 = new THREE.Mesh(boxGeo, mat);
+      const s1 = new THREE.Mesh(boxGeo, mats);
       s1.scale.set(w * 0.62, h * 0.32, d * 0.62);
       s1.position.set(cx, h + h * 0.16, cz);
       s1.castShadow = true; scene.add(s1);
-      const s2 = new THREE.Mesh(boxGeo, mat);
+      const s2 = new THREE.Mesh(boxGeo, mats);
       s2.scale.set(w * 0.36, h * 0.14, d * 0.36);
       s2.position.set(cx, h + h * 0.32 + h * 0.07, cz);
       s2.castShadow = true; scene.add(s2);
-      // a lit beacon on the very tallest towers
+      // antenna mast on the tallest towers + a lit beacon on the very tallest
+      const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 7, 6), roofMat);
+      mast.position.set(cx, h + h * 0.46 + 3.5, cz); scene.add(mast);
       if (h >= 80) {
         const bc = new THREE.Mesh(new THREE.SphereGeometry(0.7, 8, 6),
           new THREE.MeshBasicMaterial({ color: 0xff3344 }));
-        bc.position.set(cx, h + h * 0.46 + 0.8, cz); scene.add(bc);
+        bc.position.set(cx, h + h * 0.46 + 7.2, cz); scene.add(bc);
       }
     }
     // rooftop props: AC box on many roofs, a water tower on a few
     const r = rng();
-    if (r < 0.45) {
+    if (r < 0.4) {
       const ac = new THREE.Mesh(acGeo, acMat);
       ac.position.set(cx + (rng() - 0.5) * (w - 4), h + 1.3, cz + (rng() - 0.5) * (d - 4));
       ac.castShadow = true;
       scene.add(ac);
-    } else if (r < 0.6) {
+    } else if (r < 0.65) {
       const tw = new THREE.Mesh(towerGeo, towerMat);
       tw.position.set(cx, h + 2.3, cz);
       tw.castShadow = true;
@@ -299,26 +371,26 @@ export function createCity(scene) {
       const cx = i * PITCH + 27, cz = j * PITCH + 27;
       if ((i === 0 && j === 0) || (i === -5 && j === 5) || (i === 3 && j === -3)) continue; // parks + plaza
       const district = districtAt(cx, cz);
-      const mat = materials[Math.floor(rng() * materials.length)];
+      const pair = [sideMats[Math.floor(rng() * sideMats.length)], facadeMats[Math.floor(rng() * facadeMats.length)]];
       const lmKey = `${i},${j}`;
       if (landmarks[lmKey]) {
         // the tallest tower is glass; the other two are setback towers
-        addBuilding(cx, cz, 26, 26, landmarks[lmKey], lmKey === '4,-4' ? glassMat : materials[1]);
+        addBuilding(cx, cz, 26, 26, landmarks[lmKey], lmKey === '4,-4' ? glassMat : pair);
         continue;
       }
       if (district === 'Downtown') {
         const h = 28 + rng() * 46;
         // one in four tall Downtown towers is glass
-        const m2 = (h > 52 && rng() < 0.3) ? glassMat : mat;
+        const m2 = (h > 52 && rng() < 0.3) ? glassMat : pair;
         addBuilding(cx, cz, 20 + rng() * 8, 20 + rng() * 8, h, m2);
-        if (rng() < 0.5) addBuilding(cx + (rng() < 0.5 ? -14 : 14), cz + (rng() < 0.5 ? -12 : 12), 8, 8, 10 + rng() * 8, mat);
+        if (rng() < 0.5) addBuilding(cx + (rng() < 0.5 ? -14 : 14), cz + (rng() < 0.5 ? -12 : 12), 8, 8, 10 + rng() * 8, pair);
       } else if (district === 'Harbor') {
-        addBuilding(cx, cz, 26 + rng() * 4, 18 + rng() * 6, 9 + rng() * 7, mat);
+        addBuilding(cx, cz, 26 + rng() * 4, 18 + rng() * 6, 9 + rng() * 7, pair);
       } else if (district === 'Old Town') {
-        addBuilding(cx - 7, cz, 12, 20 + rng() * 6, 8 + rng() * 7, mat);
-        addBuilding(cx + 9, cz + 2, 10, 16 + rng() * 6, 7 + rng() * 6, mat);
+        addBuilding(cx - 7, cz, 12, 20 + rng() * 6, 8 + rng() * 7, pair);
+        addBuilding(cx + 9, cz + 2, 10, 16 + rng() * 6, 7 + rng() * 6, pair);
       } else {
-        addBuilding(cx, cz, 18 + rng() * 8, 18 + rng() * 8, 12 + rng() * 16, mat);
+        addBuilding(cx, cz, 18 + rng() * 8, 18 + rng() * 8, 12 + rng() * 16, pair);
       }
     }
   }

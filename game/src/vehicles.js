@@ -3,7 +3,8 @@
 import * as THREE from 'three';
 import { collideCircle } from './city.js';
 
-const CAR_COLORS = [0xc23b2e, 0x2e6db8, 0xe0b02e, 0xd8d8d8, 0x4a4f55, 0x3f8a4a, 0x7a4a9e, 0x2e8a8a];
+// Muted, desaturated paint: v3's bright primaries read as toy cars.
+const CAR_COLORS = [0x9e3b2e, 0x33567a, 0xb08d2e, 0xb0b0b0, 0x3f444a, 0x3f6b46, 0x5f4a6e, 0x2e6b66];
 
 // Car body styles: same skeleton, different proportions and pace.
 const CAR_TYPES = {
@@ -14,14 +15,41 @@ const CAR_TYPES = {
   taxi:   { bodyH: 0.55, bodyY: 0.62, bodyLen: 4.2, cabinH: 0.5, cabinY: 1.12, cabinLen: 2.0, wheelR: 0.36, maxSpeed: 29, accel: 16, taxi: true },
 };
 
+// Car detail pass — from GPT-6.1 Sol (small fixed-design call, 2026-11-17, v4):
+// side glass, sloped hood/deck, grille, skirts and door seams on the box body.
+function addCarDetails(g, t, bodyMat, glassMat, darkMat) {
+  const addBox = (w, h, d, mat, x, y, z, rx = 0) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    mesh.position.set(x, y, z);
+    mesh.rotation.x = rx;
+    mesh.castShadow = false;
+    g.add(mesh);
+  };
+  const deckY = t.bodyY + t.bodyH / 2 + 0.02;
+  if (t.cabinH !== 0) {
+    for (const x of [-0.86, 0.86]) {
+      addBox(0.04, t.cabinH * 0.7, t.cabinLen * 0.8, glassMat, x, t.cabinY, -0.25);
+    }
+    addBox(1.9, 0.1, 0.9, bodyMat, 0, deckY, t.bodyLen / 2 - 0.55, -0.12);
+  }
+  addBox(1.9, 0.1, 0.9, bodyMat, 0, deckY, -t.bodyLen / 2 + 0.55, 0.10);
+  addBox(1.2, 0.16, 0.06, darkMat, 0, t.bodyY, t.bodyLen / 2 + 0.03);
+  for (const side of [-1, 1]) {
+    addBox(0.08, 0.12, t.bodyLen * 0.7, darkMat, side, 0.32, 0);
+    addBox(0.02, t.bodyH * 0.8, 0.02, darkMat, side * 1.01, t.bodyY, 0.3);
+  }
+}
+
 export function makeCarMesh(color, isPolice, type = 'sedan') {
   const t = CAR_TYPES[type] || CAR_TYPES.sedan;
   const g = new THREE.Group();
-  const bodyMat = new THREE.MeshLambertMaterial({ color: isPolice ? 0x14161a : (t.taxi ? 0xe8b02e : color) });
-  const glassMat = new THREE.MeshLambertMaterial({ color: 0x1a2733 });
+  // car paint: Phong with a specular sheen so the body reads as metal, not plastic
+  const bodyMat = new THREE.MeshPhongMaterial({ color: isPolice ? 0x14161a : (t.taxi ? 0xc99a26 : color), shininess: 60, specular: 0x555555 });
+  const glassMat = new THREE.MeshPhongMaterial({ color: 0x141e28, shininess: 90, specular: 0x888888 });
   const darkMat = new THREE.MeshLambertMaterial({ color: 0x1c1e22 });
   const body = new THREE.Mesh(new THREE.BoxGeometry(2.0, t.bodyH, t.bodyLen), bodyMat);
   body.position.y = t.bodyY; body.castShadow = true; g.add(body);
+  addCarDetails(g, t, bodyMat, glassMat, darkMat);
   if (t.cabinH > 0) {
     const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.7, t.cabinH, t.cabinLen), glassMat);
     cabin.position.set(0, t.cabinY, -0.25); cabin.castShadow = true; g.add(cabin);
@@ -262,6 +290,10 @@ export function updatePlayerCar(G, dt) {
   }
   car.speed = Math.max(-9, Math.min(car.maxSpeed, car.speed));
   stepCar(G, car, dt, true);
+  // v3 BUG FIX (critique #1): the player's world position froze at the spot where
+  // they entered the car, so missions, the HUD distance, police and the shadow camera
+  // all measured from a stale point while driving. Keep p.pos on the car.
+  G.player.pos.set(car.pos.x, 0, car.pos.z);
   // brake lights: handbrake, or reversing while moving forward
   const braking = k.has('Space') || (back && car.speed > 0.5);
   setBrakeLights(car, braking);

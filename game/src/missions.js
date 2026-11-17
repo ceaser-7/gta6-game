@@ -32,22 +32,24 @@ const TARGETS = [
 ];
 
 function makeBeacon() {
+  // v4: slimmed — v3's 30-unit yellow tube dominated every shot. A thin pillar,
+  // a ground ring and a floating diamond are enough to read as a waypoint.
   const g = new THREE.Group();
   const beam = new THREE.Mesh(
-    new THREE.CylinderGeometry(1.6, 1.6, 30, 12, 1, true),
-    new THREE.MeshBasicMaterial({ color: 0xffd23e, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false }),
+    new THREE.CylinderGeometry(0.7, 0.7, 18, 12, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0xffd23e, transparent: true, opacity: 0.15, side: THREE.DoubleSide, depthWrite: false }),
   );
-  beam.position.y = 15;
+  beam.position.y = 9;
   const ring = new THREE.Mesh(
-    new THREE.RingGeometry(2.2, 3.2, 24),
+    new THREE.RingGeometry(1.6, 2.4, 24),
     new THREE.MeshBasicMaterial({ color: 0xffd23e, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }),
   );
   ring.rotation.x = -Math.PI / 2; ring.position.y = 0.15;
   const diamond = new THREE.Mesh(
-    new THREE.OctahedronGeometry(0.9),
+    new THREE.OctahedronGeometry(0.6),
     new THREE.MeshBasicMaterial({ color: 0xffd23e }),
   );
-  diamond.position.y = 6;
+  diamond.position.y = 4;
   g.add(beam, ring, diamond);
   g.userData = { diamond, ring };
   return g;
@@ -76,8 +78,8 @@ export function startMission(G, index) {
     m.stage = 'active';
     if (index === 0) {
       // stage 0: tail the courier's van to the market — stay close, don't spook him
-      const courier = createCar(G, t.courier.x, t.courier.z, 0, 0, { type: 'van', driver: 'courier', maxSpeed: 12, accel: 8 });
-      courier.group.children[0].material = new THREE.MeshLambertMaterial({ color: 0x8a5a2e });
+      const courier = createCar(G, t.courier.x, t.courier.z, 0, 0, { type: 'van', driver: 'courier', maxSpeed: 15, accel: 8 });
+      courier.group.children[0].material = new THREE.MeshPhongMaterial({ color: 0x8a5a2e, shininess: 40, specular: 0x444444 });
       G.courierCar = courier;
       m.tailCar = courier;
       m.tailWp = 0;
@@ -89,7 +91,7 @@ export function startMission(G, index) {
     } else if (index === 1) {
       // park the getaway car in Downtown
       const car = createCar(G, t.car.x, t.car.z, 0.8, 0, { missionCar: true, maxSpeed: 34, accel: 20 });
-      car.group.children[0].material = new THREE.MeshLambertMaterial({ color: 0xe86a10 });
+      car.group.children[0].material = new THREE.MeshPhongMaterial({ color: 0xe86a10, shininess: 60, specular: 0x555555 });
       G.missionCar = car;
       m.target = t.car; m.stage2 = t.deliver;
       G.hud.setObjective(`${def.name}: ${t.car.label}`);
@@ -115,7 +117,7 @@ export function updateMissions(G, dt) {
   // beacon pulse
   if (G.beacon.visible) {
     G.beacon.userData.diamond.rotation.y += dt * 2;
-    G.beacon.userData.diamond.position.y = 6 + Math.sin(G.time * 2.5) * 0.8;
+    G.beacon.userData.diamond.position.y = 4 + Math.sin(G.time * 2.5) * 0.8;
     G.beacon.userData.ring.material.opacity = 0.5 + Math.sin(G.time * 3) * 0.3;
   }
   // time to brief the next mission?
@@ -131,10 +133,11 @@ export function updateMissions(G, dt) {
       const p = G.player;
       const pd = Math.hypot(p.pos.x - c.pos.x, p.pos.z - c.pos.z);
       // too far: the courier waits for you; too close: he gets spooked and speeds up
-      let cruise = 10;
+      // v4: cruise 13 (v3: 10) — the ~516-unit route took a full minute to tail
+      let cruise = 13;
       if (pd > 60) cruise = 0;
       else if (pd < 5) {
-        cruise = 16;
+        cruise = 18;
         if (!m.spookShown) { m.spookShown = true; G.hud.toast('Too close — back off!'); }
       } else m.spookShown = false;
       const wp = m.tailRoute[m.tailWp];
@@ -176,14 +179,16 @@ export function updateMissions(G, dt) {
   const dist = (t) => Math.hypot(p.pos.x - t.x, p.pos.z - t.z);
   if (m.index === 0) {
     if (!m.packageGot) {
-      if (dist(m.target) < 5) {
+      // v4: pickup radius 12 (v3: 5) — a player arriving in a car could stop 8 m
+      // away and never trigger it, so M1 could never complete
+      if (dist(m.target) < 12) {
         G.hud.setObjective(`${m.name}: Package in hand — deliver it to the Harbor warehouse!`);
         m.target = m.stage2; moveBeacon(G);
         m.packageGot = true;
         G.audio.pickup();
         G.hud.toast('Package collected');
       }
-    } else if (dist(m.target) < 8) {
+    } else if (dist(m.target) < 12) {
       completeMission(G, 'Delivered. Clean work, Mara.');
     }
   } else if (m.index === 1) {
@@ -196,11 +201,11 @@ export function updateMissions(G, dt) {
         G.hud.setObjective(`${m.name}: The GT is yours — lose the police and reach the Marina lockup!`);
         G.audio.pickup();
       }
-    } else if (p.car && p.car.missionCar && dist(m.target) < 9) {
+    } else if (p.car && p.car.missionCar && dist(m.target) < 12) {
       completeMission(G, 'The client is happy. The GT is in the lockup.');
     }
   } else if (m.index === 2) {
-    if (dist(m.target) < 9) {
+    if (dist(m.target) < 12) {
       completeMission(G, 'You made it. The debt is paid — Porto Verde is yours now.');
     }
   }
@@ -213,7 +218,7 @@ export function tryMissionInteract(G) {
   const m = G.mission;
   if (!m || m.stage !== 'active' || m.index !== 0 || m.packageGot) return false;
   const p = G.player;
-  if (Math.hypot(p.pos.x - m.target.x, p.pos.z - m.target.z) < 5) {
+  if (Math.hypot(p.pos.x - m.target.x, p.pos.z - m.target.z) < 12) {
     // handled by updateMissions' proximity check; this is the E-press path
     return true;
   }

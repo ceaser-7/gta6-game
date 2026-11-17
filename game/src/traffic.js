@@ -6,7 +6,7 @@ import { createCar, stepCar, carForward } from './vehicles.js';
 import { randomRoadPoint, randomSidewalkPoint, collideCircle, HALF, PITCH } from './city.js';
 import { mulberry32 } from './city.js';
 
-const SHIRTS = [0xd8d8d8, 0x3a6db0, 0xc25a2e, 0x4a9e5c, 0xd8b02e, 0x8a5a9e, 0x222831, 0xe87a9e, 0x2e8a8a, 0xb8b0a0];
+const SHIRTS = [0xb8b8b8, 0x3a6db0, 0xa84a28, 0x4a8a52, 0xb08d2e, 0x7a4a8a, 0x222831, 0xb86a7e, 0x2e7a7a, 0xa89e8c];
 
 function makePedMesh(shirt) {
   const g = new THREE.Group();
@@ -16,10 +16,13 @@ function makePedMesh(shirt) {
   const legR = legL.clone(); legR.position.x = 0.12;
   const torso = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.58, 0.3), mat(shirt));
   torso.position.y = 0.8;
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.32, 0.3), mat(0xc98d64));
-  head.position.y = 1.26;
-  const hair = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.12, 0.34), mat(0x1c1410));
-  hair.position.y = 1.44;
+  // v4: round heads, like Mara — box heads read as toys
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 10), mat(0xc98d64));
+  head.scale.y = 1.1;
+  head.position.y = 1.28;
+  const hair = new THREE.Mesh(
+    new THREE.SphereGeometry(0.16, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), mat(0x1c1410));
+  hair.position.y = 1.3;
   g.add(legL, legR, torso, head, hair);
   const shadow = new THREE.Mesh(
     new THREE.CircleGeometry(0.5, 12),
@@ -62,8 +65,8 @@ export function spawnTrafficCar(G) {
   const types = ['sedan', 'sedan', 'sedan', 'suv', 'van', 'taxi', 'sports'];
   const type = types[Math.floor(rng() * types.length)];
   const car = createCar(G, rp.x, rp.z, rp.angle, 0, { isTraffic: true, driver: 'traffic', type, maxSpeed: 8 + rng() * 4, accel: 8 });
-  // colour it properly (createCar takes a colour; re-colour the body)
-  car.group.children[0].material = new THREE.MeshLambertMaterial({ color: [0xc23b2e, 0x2e6db8, 0xe0b02e, 0xd8d8d8, 0x4a4f55, 0x3f8a4a][Math.floor(rng() * 6)] });
+  // colour it properly (createCar takes a colour; re-colour the body, keeping the Phong sheen)
+  car.group.children[0].material = new THREE.MeshPhongMaterial({ color: [0x9e3b2e, 0x33567a, 0xb08d2e, 0xb0b0b0, 0x3f444a, 0x3f6b46][Math.floor(rng() * 6)], shininess: 60, specular: 0x555555 });
   car.cruise = car.maxSpeed;
   car.wp = nextWaypoint(G, car);
   return car;
@@ -88,9 +91,23 @@ function nextWaypoint(G, car) {
 
 export function createTraffic(G) {
   G.peds = []; G.traffic = [];
-  for (let i = 0; i < 18; i++) G.traffic.push(spawnTrafficCar(G));
-  for (let i = 0; i < 28; i++) {
+  // v4: busier streets (v3: 18 cars / 28 peds over a 900-unit map felt empty),
+  // with a share spawned near the player start so the opening streets are alive.
+  for (let i = 0; i < 24; i++) G.traffic.push(spawnTrafficCar(G));
+  for (let i = 0; i < 36; i++) {
     const p = randomSidewalkPoint(G.rng);
+    spawnPed(G, p.x, p.z);
+  }
+  for (let i = 0; i < 8; i++) { // extra traffic near the start (-54, 30)
+    const rp = nearPlayerRoadPoint(G.rng, -54, 30, 160);
+    const car = createCar(G, rp.x, rp.z, rp.angle, 0, { isTraffic: true, driver: 'traffic', type: 'sedan', maxSpeed: 8 + G.rng() * 4, accel: 8 });
+    car.group.children[0].material = new THREE.MeshPhongMaterial({ color: [0x9e3b2e, 0x33567a, 0xb08d2e, 0xb0b0b0, 0x3f444a, 0x3f6b46][Math.floor(G.rng() * 6)], shininess: 60, specular: 0x555555 });
+    car.cruise = car.maxSpeed;
+    car.wp = nextWaypoint(G, car);
+    G.traffic.push(car);
+  }
+  for (let i = 0; i < 10; i++) { // extra peds near the start
+    const p = nearPlayerSidewalkPoint(G.rng, -54, 30, 160);
     spawnPed(G, p.x, p.z);
   }
   // parked cars the player can steal, spread across the bigger city
@@ -105,7 +122,7 @@ export function createTraffic(G) {
   for (let si = 0; si < parkedSpots.length; si++) {
     const [x, z, a] = parkedSpots[si];
     const car = createCar(G, x, z, a, 0, { type: parkedTypes[si % parkedTypes.length], maxSpeed: 30, accel: 16 });
-    car.group.children[0].material = new THREE.MeshLambertMaterial({ color: [0xc23b2e, 0x2e6db8, 0xe0b02e, 0xd8d8d8, 0x3f8a4a, 0x7a4a9e][G.parked.length % 6] });
+    car.group.children[0].material = new THREE.MeshPhongMaterial({ color: [0x9e3b2e, 0x33567a, 0xb08d2e, 0xb0b0b0, 0x3f6b46, 0x5f4a6e][G.parked.length % 6], shininess: 60, specular: 0x555555 });
     G.parked.push(car);
   }
   // pedestrians standing in chatting pairs on corners (they idle, no target)
@@ -121,8 +138,25 @@ export function createTraffic(G) {
   }
   // the player's starting car, parked on the road just ahead of the spawn
   const start = createCar(G, -54, 38, 0, 0, { maxSpeed: 32, accel: 18 });
-  start.group.children[0].material = new THREE.MeshLambertMaterial({ color: 0x1f6f6b });
+  start.group.children[0].material = new THREE.MeshPhongMaterial({ color: 0x1f6f6b, shininess: 60, specular: 0x555555 });
   G.playerStartCar = start;
+}
+
+// A road / sidewalk point near (x, z): rejection-sample the uniform helpers.
+function nearPlayerRoadPoint(rng, x, z, radius) {
+  for (let i = 0; i < 24; i++) {
+    const p = randomRoadPoint(rng);
+    if (Math.hypot(p.x - x, p.z - z) < radius) return p;
+  }
+  return randomRoadPoint(rng);
+}
+
+function nearPlayerSidewalkPoint(rng, x, z, radius) {
+  for (let i = 0; i < 24; i++) {
+    const p = randomSidewalkPoint(rng);
+    if (Math.hypot(p.x - x, p.z - z) < radius) return p;
+  }
+  return randomSidewalkPoint(rng);
 }
 
 export function updateTraffic(G, dt) {
@@ -215,7 +249,7 @@ export function updateTraffic(G, dt) {
   }
   // --- keep the streets busy: top up stolen traffic cars ---
   const active = G.traffic.filter(c => c.driver === 'traffic').length;
-  for (let i = active; i < 18; i++) G.traffic.push(spawnTrafficCar(G));
+  for (let i = active; i < 24; i++) G.traffic.push(spawnTrafficCar(G));
   // --- cars hitting pedestrians ---
   for (const car of G.cars) {
     if (Math.abs(car.speed) < 3) continue;

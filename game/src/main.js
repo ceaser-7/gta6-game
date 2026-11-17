@@ -48,21 +48,23 @@ function createSky() {
 const skyParts = createSky();
 
 // --- day / night cycle (240 s loop; opens at golden-hour sunset) ---
-// Keyframes from GPT-6.1 Sol (single fixed-design call, 2026-11-17): t=0 sunset,
-// 0.125 dusk, 0.25 night, 0.5 dawn, 0.75 noon. Written into the game here.
+// Keyframe VALUES from GPT-6.1 Sol (v4 call S1, 2026-11-17): Sol's reply was cut
+// off after the frames array, so its values are used verbatim here with v3's
+// interpolation code. Night floor raised: sun 0.3 / hemi 0.35 (v3: 0.06/0.12,
+// which made night pitch black). Night sky is dark blue, not black.
 function dayNight(t) {
   t = ((t % 1) + 1) % 1;
   const frames = [
-    { t: 0, sun: '#ff9b4a', intensity: 1.2, hemi: 0.55, lamps: 0.3,
-      sky: ['#344d73', '#ad7f8e', '#ffbd7a', '#74585a'] },
-    { t: 0.125, sun: '#b779a4', intensity: 0.35, hemi: 0.25, lamps: 0.85,
-      sky: ['#10142c', '#493757', '#99606b', '#533c4d'] },
-    { t: 0.25, sun: '#203b73', intensity: 0.06, hemi: 0.12, lamps: 1,
-      sky: ['#01030a', '#08152f', '#172745', '#0e1426'] },
-    { t: 0.5, sun: '#ffad65', intensity: 1.2, hemi: 0.55, lamps: 0.4,
-      sky: ['#526d97', '#d19eaa', '#ffd2a1', '#96796e'] },
-    { t: 0.75, sun: '#fff1d6', intensity: 1.5, hemi: 0.85, lamps: 0,
-      sky: ['#398ed4', '#80c6ed', '#d1e8f4', '#8caab5'] },
+    { t: 0, sun: '#ffb36b', intensity: 1.0, hemi: 0.6, lamps: 0.3,
+      sky: ['#263655', '#8b5875', '#e78b63', '#ffd09a'] },
+    { t: 0.125, sun: '#c2a6d8', intensity: 0.45, hemi: 0.35, lamps: 0.85,
+      sky: ['#111c36', '#303957', '#694763', '#a06472'] },
+    { t: 0.25, sun: '#91aaff', intensity: 0.3, hemi: 0.35, lamps: 1,
+      sky: ['#0a1226', '#1a2a4a', '#2a3a5a', '#141a2a'] },
+    { t: 0.5, sun: '#ffd0a0', intensity: 0.8, hemi: 0.55, lamps: 0.4,
+      sky: ['#354d73', '#8b9ac0', '#e5b3a1', '#ffe0b4'] },
+    { t: 0.75, sun: '#fff4de', intensity: 1.5, hemi: 0.85, lamps: 0,
+      sky: ['#2778c3', '#559fe0', '#9ecbed', '#d8edfa'] },
   ];
   let i = 0;
   while (i < frames.length - 1 && t >= frames[i + 1].t) i++;
@@ -104,6 +106,23 @@ scene.add(sun.target);
 const hemi = new THREE.HemisphereLight(0xbfd9ff, 0x5a4a3a, 0.95);
 scene.add(hemi);
 
+// Headlights: one real spotlight on the player's car, on at dusk/night.
+// v3's headlights were emissive boxes only — at night you drove blind.
+const headlight = new THREE.SpotLight(0xffe9b0, 0, 80, 0.45, 0.6, 1);
+headlight.position.set(0, 1, 0);
+scene.add(headlight);
+scene.add(headlight.target);
+
+function updateHeadlight(G) {
+  const car = G.state === 'playing' ? G.player.car : null;
+  if (!car) { headlight.intensity = 0; return; }
+  const fx = Math.sin(car.angle), fz = Math.cos(car.angle);
+  headlight.position.set(car.pos.x + fx * 2, 1.1, car.pos.z + fz * 2);
+  headlight.target.position.set(car.pos.x + fx * 30, 0.4, car.pos.z + fz * 30);
+  headlight.target.updateMatrixWorld();
+  headlight.intensity = (G.lampGlow || 0) * 120; // on at dusk/night, off at noon
+}
+
 // Apply one day/night sample: sun position + colour, sky gradient, fog, lamps, neon.
 let skyRedrawTimer = 0;
 function applyDayNight(G, dn, dt) {
@@ -114,6 +133,7 @@ function applyDayNight(G, dn, dt) {
   G.sun.color.set(dn.sunColor);
   G.sun.intensity = dn.sunIntensity;
   hemi.intensity = dn.hemiIntensity;
+  G.lampGlow = dn.lampGlow;
   scene.fog.color.set(dn.fogColor);
   // sun disc: follow the sun; hide it below the horizon
   skyParts.disc.position.copy(dir).multiplyScalar(1000);
@@ -247,6 +267,11 @@ function startGame(fresh) {
   G.state = 'playing';
   G.audio.ensure(); G.audio.startMusic();
   G.hud.setObjective('');
+  // the controls hint shows for the first 15 s, then gets out of the way
+  const hint = document.getElementById('hint');
+  hint.style.display = '';
+  clearTimeout(G.hintTimer);
+  G.hintTimer = setTimeout(() => { hint.style.display = 'none'; }, 15000);
   G.saveGame();
 }
 
@@ -365,6 +390,14 @@ function animate() {
   }
   updateTracers(G, dt);
   updateMuzzle(G, dt);
+  // menu: slow orbit over Downtown so the title screen shows the city, not a gradient
+  if (G.state === 'menu') {
+    const a = G.time * 0.045;
+    camera.position.set(Math.sin(a) * 280, 95 + Math.sin(G.time * 0.1) * 8, Math.cos(a) * 280);
+    camera.lookAt(60, 35, -60);
+    if (camera.fov !== 62) { camera.fov = 62; camera.updateProjectionMatrix(); }
+  }
+  updateHeadlight(G);
   for (const c of G.city.clouds) {
     c.position.x += dt * 1.2;
     if (c.position.x > 300) c.position.x = -300;
