@@ -6,13 +6,16 @@ import * as THREE from 'three';
 import { G, WORLD, CAR_TYPES, STATIONS, clamp, lerp, rand, randi, pick, fmtCash } from './state.js';
 import { startChapter, updateMissions, SPOTS } from './missions.js';
 import { addWanted, syncPolice, updatePolice, policeTouchingPlayer } from './police.js';
-import { makeCarMesh, spawnCar, spawnTraffic, driveCar, updateTraffic, clampToIsland, collideAt } from './vehicles.js';
+import { makeCarMesh, spawnCar, spawnTraffic, spawnRaceCars, driveCar, updateTraffic, clampToIsland, collideAt } from './vehicles.js';
 import { createPlayer, spawnPeds, updatePeds, bark, crewLine } from './people.js';
 import { initWeapons, switchWeapon, reloadWeapon, punch, fireWeapon, updateTracers } from './weapons.js';
 import { initAudio, startRadio, changeStation, toggleMute, setVolume, sfxHorn, sfxCoin, sfxClick, sfxCrash, sfxSiren, engineSound } from './audio.js';
 import { updateHUD, drawFullMap, toast, say, setHint } from './hud.js';
 import { saveGame, loadGame, applySave, hasSave, clearSave } from './save.js';
 import { buildIsland, updateSky, animateOcean } from './island.js';
+import { initSideJobs, updateSideJobs, nearestSideJob, acceptNearestSideJob, toggleJobBoard } from './sidejobs.js';
+import { initGangs, updateGangs } from './gangs.js';
+import { initRiots, updateRiot } from './riots.js';
 
 const $ = id => document.getElementById(id);
 let renderer;
@@ -76,6 +79,10 @@ function boot() {
   buildIsland();
   createPlayer();
   spawnTraffic();
+  spawnRaceCars();
+  initSideJobs();
+  initGangs();
+  initRiots();
   spawnPeds();
   initWeapons();
   initAudio();
@@ -191,6 +198,7 @@ function wireInput() {
       case 'Digit3': switchWeapon(2); break;
       case 'Digit4': switchWeapon(3); break;
       case 'KeyR': reloadWeapon(); break;
+      case 'KeyJ': toggleJobBoard(); break;
       case 'KeyQ': changeStation(); break;
       case 'KeyM': toggleMute(); break;
       case 'KeyH': sfxHorn(); break;
@@ -434,9 +442,14 @@ function buyAmmo() {
   saveGame();
 }
 
-// Coastline Sprint: repeatable race, 120s, 5 checkpoints, $200 + 10 Respect.
-const RACE_POINTS = [[240, 40], [0, 0], [40, -200], [-200, -40], [0, 260]];
-function startSideRace() {
+// Street races: three repeatable timed checkpoint runs. Each def has its
+// checkpoints, time limit, payout, Respect, and the best-time field on G.
+const RACE_DEFS = {
+  coast: { name: 'Coastline Sprint', points: [[240, 40], [0, 0], [40, -200], [-200, -40], [0, 260]], timer: 120, pay: 200, respect: 10, bestKey: 'raceBest' },
+  harbour: { name: 'Harbour Loop', points: [[300, 120], [360, 40], [280, 80], [240, 40], [160, 120], [240, 160]], timer: 150, pay: 250, respect: 12, bestKey: 'raceBestHarbour' },
+  night: { name: 'Night Sprint', points: [[0, 120], [0, -40], [80, -120], [-80, -120], [-120, 40], [0, 120]], timer: 120, pay: 250, respect: 12, bestKey: 'raceBestNight', night: true },
+};
+function startSideRace(key) {
   if (G.sideRace) {
     toast('Race already running — reach the next checkpoint.');
     return;
@@ -445,19 +458,22 @@ function startSideRace() {
     toast('You need a car to race.');
     return;
   }
-  G.sideRace = { points: RACE_POINTS, idx: 0, timer: 120, elapsed: 0 };
-  toast('Coastline Sprint — 5 checkpoints, 120s. Go!');
+  const def = RACE_DEFS[key] || RACE_DEFS.coast;
+  if (def.night) G.timeOfDay = 22;
+  G.sideRace = { def, points: def.points, idx: 0, timer: def.timer, elapsed: 0 };
+  toast(def.name + ' — ' + def.points.length + ' checkpoints, ' + def.timer + 's. Go!');
   updateHUD();
 }
 
 function updateSideRace(dt) {
   const r = G.sideRace;
   if (!r || !G.player) return;
+  const def = r.def;
   r.timer -= dt;
   r.elapsed += dt;
   if (r.timer <= 0) {
     G.sideRace = null;
-    toast('Sprint failed — out of time.');
+    toast(def.name + ' failed — out of time.');
     updateHUD();
     return;
   }
@@ -468,10 +484,10 @@ function updateSideRace(dt) {
     if (r.idx >= r.points.length) {
       const t = r.elapsed;
       G.sideRace = null;
-      G.cash += 200;
-      G.respect += 10;
-      if (G.raceBest === null || t < G.raceBest) G.raceBest = t;
-      toast('Sprint won! +$200 · +10 Respect · Best ' + t.toFixed(1) + 's');
+      G.cash += def.pay;
+      G.respect += def.respect;
+      if (G[def.bestKey] === null || t < G[def.bestKey]) G[def.bestKey] = t;
+      toast(def.name + ' won! +$' + def.pay + ' · +' + def.respect + ' Respect · Best ' + t.toFixed(1) + 's');
       updateHUD();
       saveGame();
     } else {
@@ -536,10 +552,12 @@ function contextAction() {
   if (svc) {
     if (svc.kind === 'respray') { doRespray(); return; }
     if (svc.kind === 'ammo') { buyAmmo(); return; }
-    if (svc.kind === 'race') { startSideRace(); return; }
+    if (svc.kind === 'race') { startSideRace(svc.race); return; }
     if (svc.kind === 'garage') { buyGarageUp(); return; }
   }
   if (prop) { buyProperty(prop); return; }
+  // Near a side-job pickup -> take the job (E accepts it).
+  if (acceptNearestSideJob()) return;
   // Near a vendor door -> enter interior.
   for (const v of G.world.vendors) {
     const d = Math.hypot(px - v.x, pz - v.z);
@@ -675,10 +693,11 @@ function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(G.clock.getDelta(), 0.05);
   const t = G.clock.elapsedTime;
-  if (!G.running || G.paused || G.mapOpen) {
+  if (!G.running || G.paused || G.mapOpen || (G.sideJobs && G.sideJobs.boardOpen)) {
     renderer.render(G.scene, G.camera);
     return;
   }
+  G.frames = (G.frames || 0) + 1;
   // Day/night: 240s per full day.
   G.timeOfDay += dt * (24 / 240);
   if (G.timeOfDay >= 24) { G.timeOfDay -= 24; G.day++; }
@@ -838,6 +857,14 @@ function animate() {
   updateMissions(dt);
   updateTracers(dt);
   updateSideRace(dt);
+  updateSideJobs(dt, t);
+  updateGangs(dt, t);
+  updateRiot(dt, t);
+  // A gang hit can drop the player to 0 health — main.js owns wasted.
+  if (G.player.health <= 0 && !dead) {
+    G.player.health = 0;
+    wasted();
+  }
   updateFlash(dt);
   // Context hint.
   if (!interior) {
@@ -849,8 +876,10 @@ function animate() {
       const nearVendor = G.world.vendors.some(v => Math.hypot(p.pos.x - v.x, p.pos.z - v.z) < 6);
       const nearProp = nearestProp(30);
       const nearSvc = nearestService(30);
+      const nearJob = nearestSideJob(6);
       if (nearProp) hint = 'E: Buy ' + nearProp.name + ' ($' + nearProp.price.toLocaleString() + ')';
       else if (nearSvc) hint = 'E: ' + nearSvc.name;
+      else if (nearJob) hint = 'E: Accept ' + nearJob.label + ' ($' + nearJob.reward + ') · J: Job board';
       else if (nearVendor) hint = 'E: Enter ' + (G.world.vendors.find(v => Math.hypot(p.pos.x - v.x, p.pos.z - v.z) < 6) || {}).name;
       else if (car) hint = 'E: Enter ' + car.type.name + ' · F: Punch · 1-4: Weapons';
       else hint = 'WASD: Move · E: Interact · Tab: Island map';

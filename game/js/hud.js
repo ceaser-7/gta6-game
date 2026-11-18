@@ -2,6 +2,8 @@
 // full island map (Tab) with a 12-entry legend and a stats panel,
 // dialogue boxes, toasts. Written fresh for v3.
 import { G, WORLD, DISTRICTS, CHAPTERS, CREW, STATIONS, fmtCash, fmtClock, respectLevel } from './state.js';
+import { sideJobTargets } from './sidejobs.js';
+import { gangTerritories, gangMemberDots } from './gangs.js';
 
 const $ = id => document.getElementById(id);
 let toastTimer = null;
@@ -88,6 +90,58 @@ export function drawMinimap() {
     x.beginPath();
     x.arc(ux, uy, 3.5, 0, Math.PI * 2);
     x.fill();
+  }
+  // Gang territories (translucent rings) + hideouts + member dots.
+  for (const terr of gangTerritories()) {
+    const [tx, ty] = toMM(terr.cx, terr.cz);
+    const tr = terr.r / R * S / 2;
+    x.fillStyle = terr.color + '22';
+    x.beginPath();
+    x.arc(tx, ty, tr, 0, Math.PI * 2);
+    x.fill();
+    x.strokeStyle = terr.color;
+    x.lineWidth = 1.5;
+    x.beginPath();
+    x.arc(tx, ty, tr, 0, Math.PI * 2);
+    x.stroke();
+    const [hx, hy] = toMM(terr.hideout[0], terr.hideout[1]);
+    x.fillStyle = terr.color;
+    x.fillRect(hx - 3, hy - 3, 6, 6);
+  }
+  for (const m of gangMemberDots()) {
+    const [mx, my] = toMM(m.x, m.z);
+    x.fillStyle = m.color;
+    x.beginPath();
+    x.arc(mx, my, m.hostile ? 3.5 : 2.5, 0, Math.PI * 2);
+    x.fill();
+  }
+  // Side-job markers (kind colour; active objective bigger + ringed).
+  for (const j of sideJobTargets()) {
+    const [jx, jy] = toMM(j.x, j.z);
+    x.fillStyle = j.color;
+    x.beginPath();
+    x.arc(jx, jy, j.big ? 6 : 3.5, 0, Math.PI * 2);
+    x.fill();
+    if (j.big) {
+      x.strokeStyle = '#fff';
+      x.lineWidth = 1.5;
+      x.beginPath();
+      x.arc(jx, jy, 8.5, 0, Math.PI * 2);
+      x.stroke();
+    }
+  }
+  // Riot centre (red dot).
+  if (G.riot && G.riot.active) {
+    const [rx, ry] = toMM(G.riot.cx, G.riot.cz);
+    x.fillStyle = '#ff2020';
+    x.beginPath();
+    x.arc(rx, ry, 6, 0, Math.PI * 2);
+    x.fill();
+    x.strokeStyle = '#fff';
+    x.lineWidth = 1.5;
+    x.beginPath();
+    x.arc(rx, ry, 9, 0, Math.PI * 2);
+    x.stroke();
   }
   // Player arrow (heading up).
   x.save();
@@ -269,6 +323,64 @@ export function drawFullMap() {
     x.arc(ux, uy, 5, 0, Math.PI * 2);
     x.fill();
   }
+  // Gang territories (translucent) + hideouts + member dots.
+  for (const terr of gangTerritories()) {
+    const [tx, ty] = toM(terr.cx, terr.cz);
+    const tr = terr.r / R * S;
+    x.fillStyle = terr.color + '22';
+    x.beginPath();
+    x.arc(tx, ty, tr, 0, Math.PI * 2);
+    x.fill();
+    x.strokeStyle = terr.color;
+    x.lineWidth = 2;
+    x.beginPath();
+    x.arc(tx, ty, tr, 0, Math.PI * 2);
+    x.stroke();
+    const [hx, hy] = toM(terr.hideout[0], terr.hideout[1]);
+    x.fillStyle = terr.color;
+    x.fillRect(hx - 5, hy - 5, 10, 10);
+    x.fillStyle = '#fff';
+    x.font = 'bold 13px Arial';
+    x.textAlign = 'center';
+    x.fillText(terr.name.toUpperCase() + ' TURF', tx, ty - tr - 8);
+  }
+  for (const m of gangMemberDots()) {
+    const [mx, my] = toM(m.x, m.z);
+    x.fillStyle = m.color;
+    x.beginPath();
+    x.arc(mx, my, m.hostile ? 5 : 3.5, 0, Math.PI * 2);
+    x.fill();
+  }
+  // Side-job markers (kind colour; active objective bigger + ringed).
+  for (const j of sideJobTargets()) {
+    const [jx, jy] = toM(j.x, j.z);
+    x.fillStyle = j.color;
+    x.beginPath();
+    x.arc(jx, jy, j.big ? 9 : 5, 0, Math.PI * 2);
+    x.fill();
+    x.strokeStyle = '#fff';
+    x.lineWidth = 2;
+    x.beginPath();
+    x.arc(jx, jy, j.big ? 12 : 7, 0, Math.PI * 2);
+    x.stroke();
+  }
+  // Riot centre (red dot + label).
+  if (G.riot && G.riot.active) {
+    const [rx, ry] = toM(G.riot.cx, G.riot.cz);
+    x.fillStyle = '#ff2020';
+    x.beginPath();
+    x.arc(rx, ry, 10, 0, Math.PI * 2);
+    x.fill();
+    x.strokeStyle = '#fff';
+    x.lineWidth = 2;
+    x.beginPath();
+    x.arc(rx, ry, 14, 0, Math.PI * 2);
+    x.stroke();
+    x.fillStyle = '#ff2020';
+    x.font = 'bold 18px Arial';
+    x.textAlign = 'center';
+    x.fillText('RIOT', rx, ry - 20);
+  }
   // Player.
   const [ppx, ppy] = toM(G.player.pos.x, G.player.pos.z);
   x.fillStyle = '#fff';
@@ -355,6 +467,41 @@ export function updateHUD() {
     ).join('') + (G.heli ? '<div class="unit"><span>HELI 1</span><span>—</span><span class="beh">AIRSUPPORT</span></div>' : '');
   } else {
     panel.classList.add('hidden');
+  }
+  // Side-job panel: active job, or how many jobs are on the board.
+  const sjCard = $('sjCard');
+  if (sjCard) {
+    const sj = G.sideJobs;
+    if (sj && sj.active) {
+      const a = sj.active;
+      const obj = a.kind === 'vigilante'
+        ? 'Bust the runner — ' + Math.round(a.bust * 100) + '%'
+        : a.stage === 'pickup' ? 'Pick up at ' + a.fromName : 'Deliver to ' + a.toName;
+      const tx = a.kind === 'vigilante' && a.targetCar ? a.targetCar.mesh.position.x : (a.stage === 'pickup' ? a.pickup[0] : a.dest[0]);
+      const tz = a.kind === 'vigilante' && a.targetCar ? a.targetCar.mesh.position.z : (a.stage === 'pickup' ? a.pickup[1] : a.dest[1]);
+      const d = Math.hypot(G.player.pos.x - tx, G.player.pos.z - tz);
+      $('sjTitle').textContent = a.label;
+      $('sjObj').textContent = obj;
+      $('sjMeta').textContent = Math.round(d) + 'm · $' + a.reward + ' · +' + a.respect + ' Respect';
+      $('sjTimer').textContent = Math.ceil(a.timer) + 's';
+    } else if (sj) {
+      $('sjTitle').textContent = 'Side Jobs';
+      $('sjObj').textContent = sj.available.length + ' jobs on the board — press J';
+      $('sjMeta').textContent = 'Taxi · Courier · Vigilante';
+      $('sjTimer').textContent = '';
+    }
+  }
+  // Gang heat indicator (only when heat > 0.2, red at 3+).
+  const gh = $('gangHeat');
+  if (gh) {
+    const heat = (G.gangs && G.gangs.heat) || 0;
+    if (heat > 0.2) {
+      gh.classList.remove('hidden');
+      gh.textContent = 'GANG HEAT ' + '▲'.repeat(Math.max(1, Math.round(heat)));
+      gh.style.color = heat >= 3 ? '#ff5a5a' : '#ffd76a';
+    } else {
+      gh.classList.add('hidden');
+    }
   }
   drawMinimap();
 }

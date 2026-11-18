@@ -41,6 +41,22 @@
   #policePanel h3{margin:0 0 4px;font-size:13px;color:#ff7b7b;letter-spacing:1px}
   #policePanel .unit{display:flex;justify-content:space-between;padding:2px 0;border-top:1px solid rgba(255,255,255,.08)}
   #policePanel .unit .beh{color:#ffb020;font-weight:700}
+  #sjCard{position:absolute;top:150px;left:14px;background:rgba(10,14,28,.78);border:1px solid rgba(255,255,255,.18);border-left:4px solid #4dd0e1;border-radius:8px;padding:10px 14px;max-width:340px}
+  #sjCard h2{margin:0 0 2px;font-size:14px;letter-spacing:.5px;color:#4dd0e1}
+  #sjCard .obj{font-size:14px;font-weight:600}
+  #sjCard .meta{font-size:12px;color:#c8c8c8;margin-top:2px}
+  #sjTimer{font-size:20px;font-weight:700;color:#ffd76a}
+  #gangHeat{font-size:14px;font-weight:800;margin-top:2px;letter-spacing:1px}
+  #jobBoard{position:fixed;inset:0;background:rgba(4,8,18,.94);z-index:25;display:flex;align-items:center;justify-content:center}
+  #jobBoard .panel{width:640px}
+  #jobBoard h2{color:#4dd0e1;margin:0 0 4px}
+  .jb-active{border:1px solid #ffb020;border-radius:8px;padding:10px 12px;margin:10px 0;background:rgba(255,176,32,.08)}
+  .jb-none{color:#c8c8c8;font-size:14px;margin:10px 0}
+  .jb-job{border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:10px 12px;margin:8px 0;background:rgba(255,255,255,.05)}
+  .jb-job .t,.jb-active .t{font-weight:700;font-size:15px}
+  .jb-job .s,.jb-active .s{font-size:13px;color:#c8c8c8;margin-top:2px}
+  .jb-job .dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:8px;vertical-align:-1px}
+  .jb-job .btn,.jb-active .btn{width:auto;margin:8px 0 0;padding:8px 14px;font-size:14px}
   #hint{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);font-size:13px;color:#e8e8e8;text-shadow:0 1px 3px #000;background:rgba(0,0,0,.4);padding:5px 12px;border-radius:6px}
   #dialogue{position:absolute;left:50%;bottom:150px;transform:translateX(-50%);width:560px;max-width:90vw;background:rgba(8,10,22,.92);border:1px solid rgba(255,255,255,.25);border-radius:10px;padding:12px 16px;display:flex;gap:14px}
   #portrait{width:64px;height:64px;border-radius:8px;flex:none;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:800}
@@ -93,6 +109,13 @@
     <div id="respect">Respect 0 · Level 1</div>
     <div id="clock">Day 1 · 18:00</div>
     <div id="stars"></div>
+    <div id="gangHeat" class="hidden"></div>
+  </div>
+  <div id="sjCard">
+    <h2 id="sjTitle">Side Jobs</h2>
+    <div class="obj" id="sjObj">3 jobs on the board — press J</div>
+    <div class="meta" id="sjMeta">Taxi · Courier · Vigilante</div>
+    <div id="sjTimer"></div>
   </div>
   <div id="policePanel" class="hidden"><h3>POLICE RESPONSE</h3><div id="policeUnits"></div></div>
   <div id="minimapWrap"><canvas id="minimap" width="190" height="190"></canvas></div>
@@ -103,6 +126,17 @@
   <div id="toast" class="hidden"></div>
   <div id="dialogue" class="hidden"><div id="portrait">M</div><div><div class="who" id="dlgWho">Lena</div><div class="line" id="dlgLine"></div></div></div>
   <div id="hint"></div>
+</div>
+
+<div id="jobBoard" class="hidden">
+  <div class="panel">
+    <h2>SIDE JOBS — PORTO VERDE</h2>
+    <div class="sub">Repeatable street work. Walk to a marker and press E, or accept below. J closes this board.</div>
+    <div id="jobBoardActive"></div>
+    <h3>Available jobs</h3>
+    <div id="jobBoardList"></div>
+    <button class="btn primary" data-close="1">Close (J)</button>
+  </div>
 </div>
 
 <div id="fullMap" class="hidden">
@@ -176,6 +210,7 @@
 <div id="fade"></div>
 
 <script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>
+<script type="module" src="./js/sidejobs.js"></script>
 <script type="module" src="./js/main.js"></script>
 </body>
 </html>

@@ -2,6 +2,10 @@
 import * as THREE from 'three';
 import { G, WORLD, CAR_TYPES, clamp, lerp, rand, randi, pick } from './state.js';
 
+// Apex Racer — the high-performance street-race class. Faster than the
+// Falcon Sport, bright cyan, race trim in makeCarMesh when opts.race.
+export const RACE_CAR = { name: 'Apex Racer', top: 44, accel: 24, color: 0x18c8ff, len: 4.1 };
+
 export function makeCarMesh(type, opts = {}) {
   const g = new THREE.Group();
   const col = opts.color ?? type.color;
@@ -53,6 +57,25 @@ export function makeCarMesh(type, opts = {}) {
     b.position.set(0.3, 1.78, 0); g.add(b);
     g.userData.lightBar = [r, b];
   }
+  if (opts.race) {
+    // Race trim: low rear wing on twin struts, centre stripe, front splitter.
+    const trimMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.4, metalness: 0.6 });
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.08, 0.45), trimMat);
+    wing.position.set(0, 1.78, -L / 2 + 0.25);
+    g.add(wing);
+    for (const sx of [-0.5, 0.5]) {
+      const strut = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.7, 0.08), trimMat);
+      strut.position.set(sx, 1.42, -L / 2 + 0.25);
+      g.add(strut);
+    }
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.03, L * 0.92),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3, metalness: 0.4 }));
+    stripe.position.set(0, 1.06, 0);
+    g.add(stripe);
+    const splitter = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.08, 0.35), trimMat);
+    splitter.position.set(0, 0.28, L / 2 + 0.12);
+    g.add(splitter);
+  }
   // Damage smoke puff (hidden until damaged)
   const smoke = new THREE.Mesh(new THREE.SphereGeometry(0.9, 8, 8),
     new THREE.MeshStandardMaterial({ color: 0x888888, transparent: true, opacity: 0.55 }));
@@ -66,7 +89,7 @@ export function makeCarMesh(type, opts = {}) {
 
 // A drivable/traffic car entity.
 export function spawnCar(x, z, heading, typeIdx, opts = {}) {
-  const type = CAR_TYPES[typeIdx ?? randi(0, CAR_TYPES.length - 1)];
+  const type = opts.type ?? CAR_TYPES[typeIdx ?? randi(0, CAR_TYPES.length - 1)];
   const mesh = makeCarMesh(type, opts);
   mesh.position.set(x, 0, z); mesh.rotation.y = heading;
   G.scene.add(mesh);
@@ -176,6 +199,16 @@ export function spawnTraffic() {
     const gx = randi(-4, 4) * WORLD.block, gz = randi(-4, 4) * WORLD.block;
     const heading = pick([0, Math.PI / 2, Math.PI, -Math.PI / 2]);
     const car = spawnCar(gx + rand(-4, 4), gz + rand(-4, 4), heading, null, { traffic: true });
+    G.traffic.push(car);
+  }
+}
+
+// Park two Apex Racers, stealable, outside Sunray Garage and on the
+// Marina front. They sit in traffic but never move on their own.
+export function spawnRaceCars() {
+  for (const [x, z, h] of [[212, -182, Math.PI / 2], [262, 62, 0]]) {
+    const car = spawnCar(x, z, h, null, { type: RACE_CAR, race: true });
+    car.traffic = false;
     G.traffic.push(car);
   }
 }
