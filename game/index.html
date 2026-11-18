@@ -3,77 +3,179 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="icon" href="data:,">
 <title>Porto Verde — an open-world crime game</title>
+<link rel="icon" href="data:,">
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0e1a; font-family: 'Segoe UI', system-ui, sans-serif; color: #fff; }
-  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
-  .hud { position: fixed; z-index: 5; pointer-events: none; text-shadow: 0 1px 3px #000; }
-  #top-left { top: 14px; left: 16px; font-size: 20px; line-height: 1.5; }
-  #money { font-size: 28px; font-weight: 700; color: #7dff8a; }
-  #wanted { font-size: 22px; letter-spacing: 2px; }
-  .star.on { color: #ff2a2a; }
-  .star.off { color: rgba(255,255,255,0.25); }
-  #health { color: #ff8a8a; }
-  #top-right { top: 14px; right: 16px; text-align: right; font-size: 15px; line-height: 1.6; }
-  #minimap { border-radius: 50%; border: 2px solid rgba(255,255,255,0.5); background: #20242a; }
-  #coins { color: #ffd34d; font-weight: 600; }
-  #race { color: #ffd34d; font-weight: 700; }
-  #bottom-left { bottom: 14px; left: 16px; font-size: 15px; line-height: 1.6; color: #d8d8d8; }
-  #bottom-right { bottom: 14px; right: 16px; font-size: 15px; text-align: right; line-height: 1.6; }
-  #speed { font-size: 26px; font-weight: 700; }
-  #mission { top: 14px; left: 50%; transform: translateX(-50%); font-size: 17px; font-weight: 600; color: #ffd34d; }
-  #objective { top: 40px; left: 50%; transform: translateX(-50%); font-size: 14px; color: #fff; }
-  #compass { bottom: 14px; left: 50%; transform: translateX(-50%); font-size: 15px; letter-spacing: 4px; color: #cfd8e8; }
-  #interact { bottom: 110px; left: 50%; transform: translateX(-50%); font-size: 18px; font-weight: 600; background: rgba(0,0,0,0.6); padding: 8px 16px; border-radius: 8px; display: none; }
-  #dialog { bottom: 150px; left: 50%; transform: translateX(-50%); width: 520px; max-width: 90vw; background: rgba(10,12,20,0.88); border: 1px solid #555; border-radius: 10px; padding: 14px 18px; display: none; }
-  #dialog-name { color: #ffd34d; font-weight: 700; margin-bottom: 4px; }
-  #dialog-text { font-size: 17px; line-height: 1.45; }
-  #dialog-hint { margin-top: 8px; font-size: 12px; color: #999; }
-  #toast { top: 76px; left: 50%; transform: translateX(-50%); font-size: 15px; background: rgba(0,0,0,0.65); padding: 7px 14px; border-radius: 7px; display: none; max-width: 90vw; text-align: center; }
-  #card { top: 34%; left: 50%; transform: translate(-50%,-50%); text-align: center; display: none; }
-  #card-title { font-size: 34px; font-weight: 800; letter-spacing: 2px; color: #7dff8a; }
-  #card-sub { font-size: 20px; color: #ffd34d; margin-top: 4px; }
-  #brief { top: 22%; left: 50%; transform: translateX(-50%); width: 480px; max-width: 90vw; background: rgba(10,12,20,0.85); border: 1px solid #ffd34d; border-radius: 10px; padding: 14px 18px; display: none; }
-  #brief-title { font-size: 20px; font-weight: 700; color: #ffd34d; margin-bottom: 4px; }
-  #brief-text { font-size: 15px; line-height: 1.45; }
-  #menu { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: center; background: linear-gradient(180deg, rgba(5,8,16,0.55), rgba(5,8,16,0.85)); text-align: center; }
-  #menu h1 { font-size: 64px; letter-spacing: 6px; color: #ffd34d; text-shadow: 0 3px 18px #000; }
-  #menu h2 { font-size: 20px; color: #fff; margin: 8px 0 22px; font-weight: 400; }
-  #menu p { max-width: 560px; font-size: 15px; line-height: 1.6; color: #d8d8e8; margin-bottom: 18px; }
-  .btn { pointer-events: auto; cursor: pointer; font-size: 19px; font-weight: 700; padding: 12px 34px; border: none; border-radius: 8px; background: #ffd34d; color: #1a1a1a; margin: 4px; }
-  .btn:hover { background: #ffe14d; }
-  .btn.ghost { background: rgba(255,255,255,0.15); color: #fff; border: 1px solid #fff; }
-  #controls { font-size: 13px; color: #aab; margin-top: 16px; line-height: 1.7; }
-  #wasted { position: fixed; inset: 0; z-index: 30; display: none; align-items: center; justify-content: center; background: rgba(20,0,0,0.75); font-size: 64px; font-weight: 800; letter-spacing: 8px; color: #ff2a2a; }
-  #map-overlay { position: fixed; inset: 0; z-index: 15; display: none; align-items: center; justify-content: center; background: rgba(5,8,16,0.85); }
-  #fullmap { border: 2px solid #555; border-radius: 8px; background: #20242a; }
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#0b1020;font-family:'Segoe UI',Arial,sans-serif;color:#fff}
+  #game{position:fixed;inset:0}
+  canvas{display:block}
+  .hidden{display:none!important}
+  #hud{position:fixed;inset:0;pointer-events:none;z-index:5}
+  #missionCard{position:absolute;top:14px;left:14px;background:rgba(10,14,28,.78);border:1px solid rgba(255,255,255,.18);border-left:4px solid #ffb020;border-radius:8px;padding:10px 14px;max-width:360px}
+  #missionCard h2{margin:0 0 2px;font-size:15px;letter-spacing:.5px;color:#ffb020}
+  #missionCard .obj{font-size:14px;font-weight:600}
+  #missionCard .next{font-size:12px;color:#9fd8ff;margin-top:3px}
+  #missionCard .stage{font-size:12px;color:#c8c8c8}
+  #missionTimer{font-size:20px;font-weight:700;color:#ff5a5a}
+  #topRight{position:absolute;top:14px;right:14px;text-align:right}
+  #cash{font-size:22px;font-weight:800;color:#7dff9b;text-shadow:0 1px 3px #000}
+  #respect{font-size:13px;color:#ffd76a}
+  #clock{font-size:14px;color:#e8e8e8;margin-top:2px}
+  #stars{font-size:22px;letter-spacing:3px;margin-top:2px;text-shadow:0 1px 3px #000}
+  #stars .on{color:#ffcf3d}#stars .off{color:rgba(255,255,255,.28)}
+  #minimapWrap{position:absolute;right:14px;bottom:14px;width:190px;height:190px;border-radius:50%;overflow:hidden;border:3px solid rgba(255,255,255,.35);box-shadow:0 0 0 2px rgba(0,0,0,.5),0 4px 18px rgba(0,0,0,.6);background:#06263f}
+  #minimap{width:100%;height:100%}
+  #speedo{position:absolute;right:216px;bottom:20px;text-align:right;text-shadow:0 1px 3px #000}
+  #speed{font-size:34px;font-weight:800}
+  #carName{font-size:13px;color:#ffd76a}
+  #carCond{font-size:12px;color:#9fd8ff}
+  #ammo{position:absolute;right:216px;bottom:96px;text-align:right;text-shadow:0 1px 3px #000}
+  #weaponName{font-size:15px;font-weight:700}
+  #ammoCount{font-size:20px;font-weight:800;color:#ffb020}
+  #radio{position:absolute;left:14px;bottom:14px;background:rgba(10,14,28,.7);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:8px 12px;font-size:13px}
+  #radio b{color:#7dff9b}
+  #collect{position:absolute;left:14px;bottom:64px;font-size:13px;background:rgba(10,14,28,.7);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:6px 10px}
+  #collect b{color:#ffd76a}
+  #toast{position:absolute;left:50%;bottom:110px;transform:translateX(-50%);background:rgba(10,14,28,.85);border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:10px 18px;font-size:15px;font-weight:600;text-align:center;max-width:520px}
+  #policePanel{position:absolute;top:150px;right:14px;width:230px;background:rgba(20,8,10,.82);border:1px solid rgba(255,90,90,.5);border-radius:8px;padding:8px 10px;font-size:12px}
+  #policePanel h3{margin:0 0 4px;font-size:13px;color:#ff7b7b;letter-spacing:1px}
+  #policePanel .unit{display:flex;justify-content:space-between;padding:2px 0;border-top:1px solid rgba(255,255,255,.08)}
+  #policePanel .unit .beh{color:#ffb020;font-weight:700}
+  #hint{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);font-size:13px;color:#e8e8e8;text-shadow:0 1px 3px #000;background:rgba(0,0,0,.4);padding:5px 12px;border-radius:6px}
+  #dialogue{position:absolute;left:50%;bottom:150px;transform:translateX(-50%);width:560px;max-width:90vw;background:rgba(8,10,22,.92);border:1px solid rgba(255,255,255,.25);border-radius:10px;padding:12px 16px;display:flex;gap:14px}
+  #portrait{width:64px;height:64px;border-radius:8px;flex:none;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:800}
+  #dialogue .who{font-size:14px;font-weight:800;color:#ffb020}
+  #dialogue .line{font-size:15px;line-height:1.45}
+  #fullMap{position:fixed;inset:0;background:rgba(4,8,18,.96);z-index:20;display:flex;gap:18px;padding:26px}
+  #mapCanvas{flex:1;border:2px solid rgba(255,255,255,.25);border-radius:10px;background:#06263f}
+  #mapSide{width:340px;overflow-y:auto}
+  #mapSide h2{color:#ffb020;margin:4px 0 8px}
+  #mapSide h3{color:#9fd8ff;margin:14px 0 6px}
+  .job{border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:8px 10px;margin-bottom:8px;background:rgba(255,255,255,.05)}
+  .job.done{border-color:#3fae5a}.job.active{border-color:#ffb020}.job.locked{opacity:.55}
+  .job .t{font-weight:700}.job .p{color:#7dff9b}.job .s{font-size:12px;color:#c8c8c8}
+  .legend div{font-size:13px;padding:2px 0}.legend .dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:8px;vertical-align:-1px}
+  #gps{font-size:14px;color:#ffd76a;margin-top:8px}
+  .screen{position:fixed;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at 50% 30%,#1c2b52 0%,#0b1020 65%)}
+  .panel{background:rgba(10,14,28,.9);border:1px solid rgba(255,255,255,.2);border-radius:14px;padding:28px 36px;width:560px;max-width:92vw;max-height:88vh;overflow-y:auto}
+  .panel h1{margin:0 0 4px;font-size:38px;letter-spacing:2px;color:#ffb020}
+  .panel h1 span{color:#7dff9b}
+  .panel .sub{color:#9fd8ff;margin-bottom:18px}
+  .btn{display:block;width:100%;text-align:left;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.25);color:#fff;font-size:17px;padding:12px 16px;margin:8px 0;border-radius:8px;cursor:pointer}
+  .btn:hover{background:rgba(255,176,32,.25);border-color:#ffb020}
+  .btn.primary{background:#ffb020;color:#111;font-weight:800}
+  .btn.primary:hover{background:#ffc44d}
+  .panel p{font-size:14px;line-height:1.55;color:#d8d8d8}
+  .panel h3{color:#ffb020}
+  .keys{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:14px}
+  .keys b{color:#ffd76a}
+  #fade{position:fixed;inset:0;background:#000;z-index:40;pointer-events:none;opacity:0;transition:opacity .5s}
+  #wasted{position:fixed;inset:0;z-index:35;display:flex;align-items:center;justify-content:center;background:rgba(40,0,0,.55)}
+  #wasted h1{font-size:64px;letter-spacing:8px;color:#ff3b3b;text-shadow:0 2px 20px #000}
+  #passed{position:fixed;inset:0;z-index:35;display:flex;align-items:center;justify-content:center;background:rgba(0,30,10,.45)}
+  #passed .box{text-align:center;background:rgba(8,20,12,.92);border:2px solid #7dff9b;border-radius:14px;padding:26px 44px}
+  #passed h1{color:#7dff9b;margin:0 0 6px;font-size:34px}
 </style>
 </head>
 <body>
-<canvas id="game"></canvas>
-<div class="hud" id="top-left"><div id="money">$200</div><div id="wanted"></div><div id="health">♥ 100</div></div>
-<div class="hud" id="top-right"><canvas id="minimap" width="150" height="150"></canvas><div id="coins">◉ Verde Coins 0/12</div><div id="race"></div></div>
-<div class="hud" id="bottom-left"><div id="radio">♪ VERDE FM</div><div id="ammo"></div></div>
-<div class="hud" id="bottom-right"><div id="speed"></div></div>
-<div class="hud" id="mission"></div>
-<div class="hud" id="objective"></div>
-<div class="hud" id="compass">N</div>
-<div class="hud" id="interact"></div>
-<div class="hud" id="dialog"><div id="dialog-name"></div><div id="dialog-text"></div><div id="dialog-hint">ENTER — continue</div></div>
-<div class="hud" id="toast"></div>
-<div class="hud" id="card"><div id="card-title"></div><div id="card-sub"></div></div>
-<div class="hud" id="brief"><div id="brief-title"></div><div id="brief-text"></div></div>
-<div id="map-overlay"><canvas id="fullmap" width="560" height="560"></canvas></div>
-<div id="wasted">WASTED</div>
-<div id="menu">
-  <h1>PORTO VERDE</h1>
-  <h2>An open-world crime game — Mara Voss owes Rook $40,000. Three jobs and she is free.</h2>
-  <p>Drive, talk, collect, race. Tail the courier van, steal the gold car, outrun a five-star dragnet. Find all 12 Verde Coins, win the Sunset Sprint, eat at El Faro, fix the project car at Sunray Garage. The city talks back — press E.</p>
-  <div><button class="btn" id="btn-start">START</button><button class="btn ghost" id="btn-continue">CONTINUE</button></div>
-  <div id="controls">WASD / arrows — move &amp; drive &nbsp;·&nbsp; Shift — run &nbsp;·&nbsp; Mouse — look (click to lock) &nbsp;·&nbsp; E — enter car / talk / enter shops &nbsp;·&nbsp; F — punch &nbsp;·&nbsp; Click — shoot &nbsp;·&nbsp; R — reload &nbsp;·&nbsp; H — horn &nbsp;·&nbsp; Q — radio &nbsp;·&nbsp; M — mute &nbsp;·&nbsp; Tab — map</div>
+<div id="game"></div>
+
+<div id="hud" class="hidden">
+  <div id="missionCard">
+    <h2 id="mcChapter">Chapter 1 — First Errand</h2>
+    <div class="obj" id="mcObjective">Drive to the marker</div>
+    <div class="stage" id="mcStage">Stage 1/3</div>
+    <div class="next" id="mcNext">NEXT: Pick up the package</div>
+    <div id="missionTimer"></div>
+  </div>
+  <div id="topRight">
+    <div id="cash">$0</div>
+    <div id="respect">Respect 0 · Level 1</div>
+    <div id="clock">Day 1 · 18:00</div>
+    <div id="stars"></div>
+  </div>
+  <div id="policePanel" class="hidden"><h3>POLICE RESPONSE</h3><div id="policeUnits"></div></div>
+  <div id="minimapWrap"><canvas id="minimap" width="190" height="190"></canvas></div>
+  <div id="speedo"><div id="speed">0</div><div id="carName"></div><div id="carCond"></div></div>
+  <div id="ammo"><div id="weaponName">Fists</div><div id="ammoCount">∞</div></div>
+  <div id="radio">♪ <b id="radioStation">VERDE FM</b> — <span id="radioSong">Golden Hour Drive</span></div>
+  <div id="collect">◆ Verde Coins <b id="coinCount">0/20</b> · 🏠 Safehouse owned</div>
+  <div id="toast" class="hidden"></div>
+  <div id="dialogue" class="hidden"><div id="portrait">M</div><div><div class="who" id="dlgWho">Lena</div><div class="line" id="dlgLine"></div></div></div>
+  <div id="hint"></div>
 </div>
-<script type="module" src="./src/main.js"></script>
+
+<div id="fullMap" class="hidden">
+  <canvas id="mapCanvas" width="900" height="900"></canvas>
+  <div id="mapSide">
+    <h2>PORTO VERDE — ISLAND MAP</h2>
+    <div id="gps">GPS: —</div>
+    <h3>Story Jobs</h3><div id="jobList"></div>
+    <h3>Legend</h3>
+    <div class="legend">
+      <div><span class="dot" style="background:#fff"></span>You are here</div>
+      <div><span class="dot" style="background:#ffb020"></span>Job objective</div>
+      <div><span class="dot" style="background:#7dff9b"></span>Safehouse</div>
+      <div><span class="dot" style="background:#ff5a5a"></span>Police</div>
+      <div><span class="dot" style="background:#9fd8ff"></span>Weapons / Ammo</div>
+      <div><span class="dot" style="background:#ff7bff"></span>Race start</div>
+      <div><span class="dot" style="background:#ff8c8c"></span>Hospital</div>
+      <div><span class="dot" style="background:#ffd76a"></span>Verde Coin</div>
+    </div>
+    <p style="font-size:13px;color:#c8c8c8">Porto Verde is an island. The sand ring and the ocean surround the city on every side — the map ends at the beach, never in a void. Press Tab or Esc to close.</p>
+    <button class="btn" id="closeMapBtn">Close map (Tab)</button>
+  </div>
+</div>
+
+<div id="menu" class="screen">
+  <div class="panel">
+    <h1>PORTO <span>VERDE</span></h1>
+    <div class="sub">An open-world crime game on a sun-soaked island. Original city, original story.</div>
+    <p>Mara Voss owes Rook <b style="color:#ffb020">$40,000</b>. Seven jobs stand between her and freedom. Drive, fight, and outrun the Porto Verde police — and mind the tide: the city is an island, and the map ends at the beach.</p>
+    <button class="btn primary" id="btnContinue">▶ Continue</button>
+    <button class="btn" id="btnNew">＋ New Game</button>
+    <button class="btn" id="btnHow">? How to Play</button>
+    <button class="btn" id="btnSettings">⚙ Settings</button>
+  </div>
+</div>
+
+<div id="howto" class="screen hidden">
+  <div class="panel">
+    <h3>How to Play</h3>
+    <div class="keys">
+      <b>W A S D / ←↑↓→</b><span>Move / drive</span>
+      <b>Shift</b><span>Run (on foot)</span>
+      <b>E</b><span>Enter / exit car · steal car · talk · enter interiors</span>
+      <b>Space</b><span>Handbrake drift (driving)</span>
+      <b>F</b><span>Punch</span>
+      <b>1–4</b><span>Weapons: Fists · Pistol · SMG · Locked</span>
+      <b>R</b><span>Reload</span>
+      <b>Q</b><span>Change radio station</span>
+      <b>M</b><span>Mute radio</span>
+      <b>H</b><span>Horn</span>
+      <b>V</b><span>Chase camera / close camera</span>
+      <b>Tab</b><span>Full island map</span>
+      <b>Esc</b><span>Pause / close map</span>
+    </div>
+    <p>Follow the gold marker. Complete the seven story jobs to clear Mara's $40,000 debt to Rook. Wanted stars rise when the police see you commit crimes — break line of sight to lose them. Collect all 20 Verde Coins. Your progress saves automatically.</p>
+    <button class="btn primary" id="btnHowBack">Back</button>
+  </div>
+</div>
+
+<div id="settings" class="screen hidden">
+  <div class="panel">
+    <h3>Settings</h3>
+    <p>Volume <input type="range" id="volSlider" min="0" max="100" value="70" style="width:200px"> <span id="volVal">70</span></p>
+    <p>Music: radio stations play procedurally. Sound effects: engine, horn, sirens, gunfire.</p>
+    <button class="btn primary" id="btnSettingsBack">Back</button>
+  </div>
+</div>
+
+<div id="wasted" class="hidden"><h1>WASTED</h1></div>
+<div id="passed" class="hidden"><div class="box"><h1 id="passedTitle">JOB COMPLETE</h1><div id="passedSub" style="font-size:16px"></div></div></div>
+<div id="fade"></div>
+
+<script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>
+<script type="module" src="./js/main.js"></script>
 </body>
 </html>
