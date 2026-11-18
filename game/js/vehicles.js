@@ -40,6 +40,22 @@ export function makeCarMesh(type, opts = {}) {
     const tl = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.2, 0.1), tlMat);
     tl.position.set(hx, 0.7, -L / 2 - 0.02); g.add(tl);
   }
+  if (opts.race) {
+    // Race trim: a low rear wing on twin struts, a centre stripe, and a
+    // bright front splitter so the car reads as a racer at a glance.
+    const darkMat = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.4, metalness: 0.6 });
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(2.15, 0.09, 0.55), darkMat);
+    wing.position.set(0, 1.68, -L / 2 - 0.18); g.add(wing);
+    for (const sx of [-0.72, 0.72]) {
+      const strut = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.55, 0.09), darkMat);
+      strut.position.set(sx, 1.38, -L / 2 - 0.18); g.add(strut);
+    }
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.05, L * 0.92),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3, metalness: 0.4 }));
+    stripe.position.set(0, 1.05, 0); g.add(stripe);
+    const splitter = new THREE.Mesh(new THREE.BoxGeometry(2.05, 0.12, 0.45), darkMat);
+    splitter.position.set(0, 0.28, L / 2 + 0.12); g.add(splitter);
+  }
   if (opts.police) {
     // Light bar
     const bar = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.25, 0.5),
@@ -177,5 +193,34 @@ export function spawnTraffic() {
     const heading = pick([0, Math.PI / 2, Math.PI, -Math.PI / 2]);
     const car = spawnCar(gx + rand(-4, 4), gz + rand(-4, 4), heading, null, { traffic: true });
     G.traffic.push(car);
+  }
+}
+
+// ---- Race cars: a high-performance class, parked and stealable ----
+// Faster than the Falcon Sport, sharper handling, but lower grip when the
+// road is wet (the island's night rain) — a fair trade, not a free win.
+export const RACE_CAR = { name: 'Apex Racer', top: 44, accel: 24, color: 0x18c8ff, len: 4.1 };
+
+function makeRaceCarEntity(x, z, heading) {
+  const mesh = makeCarMesh(RACE_CAR, { race: true });
+  mesh.position.set(x, 0, z);
+  mesh.rotation.y = heading;
+  G.scene.add(mesh);
+  return {
+    mesh, type: RACE_CAR, heading, speed: 0, condition: 100,
+    traffic: false, police: false, targetSpeed: 0, lane: 0, stuck: 0, skid: [],
+  };
+}
+
+export function spawnRaceCars() {
+  // Parked where a racer would leave one: outside Sunray Garage and on
+  // the Marina front. They sit in traffic (stealable) but never move
+  // on their own — updateTraffic only drives cars flagged traffic.
+  const spots = [
+    [212, -182, Math.PI / 2],  // Sunray Garage forecourt
+    [262, 62, -Math.PI / 2],   // Marina front
+  ];
+  for (const [x, z, h] of spots) {
+    G.traffic.push(makeRaceCarEntity(x, z, h));
   }
 }

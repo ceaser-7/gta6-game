@@ -442,7 +442,9 @@ function serviceSpots() {
     { id: 'marina-loft', name: 'Marina Loft', x: 268, z: 92, color: 0x7dff9b, kind: 'property', price: 4000 },
     { id: 'old-town-courtyard', name: 'Old Town Courtyard', x: -240, z: -90, color: 0x7dff9b, kind: 'property', price: 6000 },
     { id: 'paints', name: 'Prism Paints', x: -260, z: -76, color: 0xff5aff, kind: 'respray', price: 150 },
-    { id: 'sprint', name: 'Coastline Sprint', x: 280, z: 80, color: 0xff7bff, kind: 'race', price: 0 },
+    { id: 'sprint', name: 'Coastline Sprint', x: 280, z: 80, color: 0xff7bff, kind: 'race', price: 0, race: 'coastline' },
+    { id: 'harbour', name: 'Harbour Loop', x: 300, z: 120, color: 0xff7bff, kind: 'race', price: 0, race: 'harbour' },
+    { id: 'nightsprint', name: 'Night Sprint', x: 0, z: 120, color: 0xff7bff, kind: 'race', price: 0, race: 'night' },
     { id: 'arms', name: 'Iron Pier Arms', x: 80, z: -120, color: 0x9fd8ff, kind: 'ammo', price: 0 },
     { id: 'garageup', name: 'Sunray Upgrades', x: 182, z: -200, color: 0xffb020, kind: 'garage', price: 0 },
   ];
@@ -477,13 +479,17 @@ function serviceSpots() {
   G.garageUpgrades = { tires: false, brakes: false, chassis: false };
   G.serviceDefs = [
     { id: 'paints', name: 'Prism Paints', x: -260, z: -76, price: 150, kind: 'respray' },
-    { id: 'sprint', name: 'Coastline Sprint', x: 280, z: 80, price: 0, kind: 'race' },
+    { id: 'sprint', name: 'Coastline Sprint', x: 280, z: 80, price: 0, kind: 'race', race: 'coastline' },
+    { id: 'harbour', name: 'Harbour Loop', x: 300, z: 120, price: 0, kind: 'race', race: 'harbour' },
+    { id: 'nightsprint', name: 'Night Sprint', x: 0, z: 120, price: 0, kind: 'race', race: 'night' },
     { id: 'arms', name: 'Iron Pier Arms', x: 80, z: -120, price: 0, kind: 'ammo' },
     { id: 'garageup', name: 'Sunray Upgrades', x: 182, z: -200, price: 0, kind: 'garage' },
   ];
   G.paintColors = [0xff2a7a, 0x2aff7a, 0x2a7aff, 0xffd72a, 0xff7a2a, 0xe8e8e8];
   G.sideRace = null;
   G.raceBest = null;
+  G.raceBestHarbour = null;
+  G.raceBestNight = null;
 }
 
 export function buildIsland() {

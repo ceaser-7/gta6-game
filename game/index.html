@@ -17,6 +17,16 @@
   #missionCard .next{font-size:12px;color:#9fd8ff;margin-top:3px}
   #missionCard .stage{font-size:12px;color:#c8c8c8}
   #missionTimer{font-size:20px;font-weight:700;color:#ff5a5a}
+  #sideJobCard{position:absolute;top:170px;left:14px;background:rgba(10,14,28,.78);border:1px solid rgba(255,255,255,.18);border-left:4px solid #4dd0e1;border-radius:8px;padding:10px 14px;max-width:360px}
+  #sideJobCard h2{margin:0 0 2px;font-size:15px;letter-spacing:.5px}
+  #sideJobCard .obj{font-size:14px;font-weight:600}
+  #sideJobCard .stage{font-size:12px;color:#c8c8c8}
+  #sjTimer{font-size:20px;font-weight:700;color:#ff5a5a}
+  #gangHeat{font-size:13px;font-weight:700;margin-top:2px;text-shadow:0 1px 3px #000}
+  #jobBoard{position:fixed;inset:0;background:rgba(4,8,18,.96);z-index:20;display:flex;align-items:center;justify-content:center}
+  #jobBoard .boardPanel{background:rgba(10,14,28,.95);border:1px solid rgba(255,255,255,.25);border-radius:14px;padding:26px 32px;width:560px;max-width:92vw;max-height:88vh;overflow-y:auto}
+  #jobBoard h2{color:#ffb020;margin:0 0 10px}
+  #jobBoard h3{color:#9fd8ff;margin:14px 0 6px}
   #topRight{position:absolute;top:14px;right:14px;text-align:right}
   #cash{font-size:22px;font-weight:800;color:#7dff9b;text-shadow:0 1px 3px #000}
   #respect{font-size:13px;color:#ffd76a}
@@ -88,11 +98,18 @@
     <div class="next" id="mcNext">NEXT: Pick up the package</div>
     <div id="missionTimer"></div>
   </div>
+  <div id="sideJobCard" class="hidden">
+    <h2 id="sjTitle">Side Jobs</h2>
+    <div class="obj" id="sjObjective"></div>
+    <div class="stage" id="sjMeta"></div>
+    <div id="sjTimer"></div>
+  </div>
   <div id="topRight">
     <div id="cash">$0</div>
     <div id="respect">Respect 0 · Level 1</div>
     <div id="clock">Day 1 · 18:00</div>
     <div id="stars"></div>
+    <div id="gangHeat"></div>
   </div>
   <div id="policePanel" class="hidden"><h3>POLICE RESPONSE</h3><div id="policeUnits"></div></div>
   <div id="minimapWrap"><canvas id="minimap" width="190" height="190"></canvas></div>
@@ -103,6 +120,17 @@
   <div id="toast" class="hidden"></div>
   <div id="dialogue" class="hidden"><div id="portrait">M</div><div><div class="who" id="dlgWho">Lena</div><div class="line" id="dlgLine"></div></div></div>
   <div id="hint"></div>
+</div>
+
+<div id="jobBoard" class="hidden">
+  <div class="boardPanel">
+    <h2>SIDE JOBS — PORTO VERDE</h2>
+    <p style="font-size:13px;color:#c8c8c8;margin:0 0 8px">Repeatable street work between story jobs. Walk or drive to a pickup and press E, or accept here. Timers are tight — a careless drive fails.</p>
+    <div id="jobBoardActive"></div>
+    <h3>Available</h3>
+    <div id="jobBoardList"></div>
+    <button class="btn" id="closeJobBoardBtn">Close (J)</button>
+  </div>
 </div>
 
 <div id="fullMap" class="hidden">
@@ -176,6 +204,7 @@
 <div id="fade"></div>
 
 <script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>
+<script type="module" src="./js/sidejobs.js"></script>
 <script type="module" src="./js/main.js"></script>
 </body>
 </html>
