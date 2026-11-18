@@ -1,173 +1,149 @@
-// Missions: M1 The Tail ($400), M2 The Getaway Car ($800), M3 The Dragnet ($2,300).
-// Each has a 240s timer. Checkpoints and the safehouse sit ON roads / open
-// ground, never inside buildings (generous radii: 20m checkpoints, 16m safehouse).
-const PV_Missions = (() => {
-  const VAN_ROUTE = [
-    { x: -384, z: -320 }, { x: -384, z: 320 }, { x: 320, z: 320 },
-    { x: 320, z: -320 }, { x: -384, z: -320 },
-  ];
-  const M3_CPS = [
-    { x: 320, z: -320 }, { x: -320, z: -320 }, { x: -320, z: 320 }, { x: 320, z: 320 },
-  ];
-  const M3_SAFE = { x: 64, z: 64 };
-  let beacon = null;
-  function beaconMesh() {
-    if (beacon) return beacon;
-    const g = new THREE.Group();
-    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 60, 12, 1, true),
-      new THREE.MeshBasicMaterial({ color: 0xffd23e, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }));
-    pillar.position.y = 30; g.add(pillar);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(6, 0.5, 8, 24),
-      new THREE.MeshBasicMaterial({ color: 0xffd23e }));
-    ring.rotation.x = Math.PI / 2; ring.position.y = 0.5; g.add(ring);
-    const dia = new THREE.Mesh(new THREE.OctahedronGeometry(1.6),
-      new THREE.MeshBasicMaterial({ color: 0xffd23e }));
-    dia.position.y = 12; g.add(dia);
-    g.visible = false;
-    G.scene.add(g);
-    beacon = g;
-    return g;
+// Porto Verde — the three missions: M1 The Tail ($400), M2 Getaway Car
+// ($800), M3 Dragnet ($2,300). 240 s timers, road-based checkpoints,
+// story beats at the boundaries. All original.
+import { G, dist2, clamp, saveGame } from './util.js';
+import { makeCar } from './vehicles.js';
+import { playStory } from './story.js';
+import { showCard, queueDialog } from './hud.js';
+
+const M1_ROUTE = [
+  { x: -384, z: -320 }, { x: 320, z: -320 },
+  { x: 320, z: 320 }, { x: -384, z: 320 },
+];
+const M1_PICKUP = { x: 0, z: 320 };
+const M1_DROP = { x: -320, z: -320 };
+const M2_CAR = { x: 192, z: 256 };
+const M2_DROP = { x: -320, z: -192 };
+const M3_CPS = [{ x: 320, z: 320 }, { x: -320, z: 64 }, { x: 64, z: -320 }];
+const M3_SAFE = { x: -64, z: 320 };
+const PAYS = [400, 800, 2300];
+const NAMES = ['The Tail', 'Getaway Car', 'Dragnet'];
+
+export function startMission(n) {
+  if (G.mission) return false;
+  if (G.missionsDone[n]) return false;
+  if (n === 0) {
+    const van = makeCar('van', 0x6b4a2e);
+    van.position.set(M1_ROUTE[0].x, 0, M1_ROUTE[0].z);
+    van.rotation.y = Math.PI / 2;
+    G.scene.add(van);
+    G.mission = { n, phase: 'tail', timer: 240, van, routeIdx: 1, tailTime: 0, target: { ...M1_ROUTE[1], label: 'Follow the van' } };
+    queueDialog('Rook', 'The Tail: follow the brown courier van. Stay 5 to 60 metres back. Do not spook it.');
+  } else if (n === 1) {
+    const car = makeCar('sports', 0xd8a920);
+    car.position.set(M2_CAR.x, 0, M2_CAR.z);
+    car.userData.parked = true; // stays put until Mara takes it.
+    G.scene.add(car);
+    G.cars.push(car);
+    G.mission = { n, phase: 'steal', timer: 240, goldCar: car, target: { ...M2_CAR, label: 'Steal the gold car' } };
+    queueDialog('Rook', 'Getaway Car: a gold sports car is parked uptown. Take it and bring it to the drop.');
+  } else {
+    G.wanted = 5;
+    G.mission = { n, phase: 'cps', timer: 240, cpIdx: 0, target: { ...M3_CPS[0], label: 'Checkpoint 1/3' } };
+    playStory('beforeM3');
+    queueDialog('Rook', 'Dragnet: five stars from the start. Hit all three checkpoints, then the safehouse.');
   }
-  function setBeacon(x, z, on) {
-    const b = beaconMesh();
-    b.visible = !!on;
-    if (on) b.position.set(x, 0, z);
-    G.beaconTarget = on ? { x, z } : null;
+  return true;
+}
+
+export function missionInteract() {
+  const m = G.mission;
+  if (!m || !G.player) return null;
+  const px = G.playerCar ? G.playerCar.position.x : G.player.position.x;
+  const pz = G.playerCar ? G.playerCar.position.z : G.player.position.z;
+  if (m.n === 0 && m.phase === 'pickup') {
+    if (dist2(px, pz, M1_PICKUP.x, M1_PICKUP.z) < 5) return { x: M1_PICKUP.x, z: M1_PICKUP.z, label: 'Pick up the package', action: () => { m.phase = 'deliver'; m.target = { ...M1_DROP, label: 'Deliver the package' }; queueDialog('Mara', 'Package in hand. Now the drop.'); } };
   }
-  function startMission(idx) {
-    if (G.mission) { PV_HUD.toast('Finish the current job first.'); return false; }
-    if (G.missionsDone[idx]) { PV_HUD.toast('That job is already done.'); return false; }
-    const m = { idx, timer: 240, phase: 'start' };
-    if (idx === 0) {
-      m.phase = 'tail'; m.tailTime = 0; m.vanWp = 0;
-      m.van = PV_Vehicles.makeCar('van', VAN_ROUTE[0].x, VAN_ROUTE[0].z, 0, 0x6a4a2a);
-      m.van.driver = 'mission'; G.cars.push(m.van);
-      m.pickup = { x: -128, z: 128 }; m.deliver = { x: 256, z: -256 };
-      PV_Dialogue.showDialog('Rook', 'Follow that brown courier van. Stay close, but not too close. When it stops, grab the package and bring it to the drop.');
-      setBeacon(m.van.x, m.van.z, true);
-      PV_HUD.mission('MISSION 1 — THE TAIL · follow the brown van · ' + fmtTime(m.timer));
-    } else if (idx === 1) {
-      m.phase = 'steal';
-      m.gold = PV_Vehicles.makeCar('sports', 256, 192, Math.PI / 2, 0xd8b83a);
-      m.gold.driver = 'parked'; m.gold.gold = true; G.cars.push(m.gold);
-      m.deliver = { x: -320, z: 320 };
-      PV_Dialogue.showDialog('Rook', 'A gold sports car is parked uptown. Take it — quietly — and bring it to the garage on the west side.');
-      setBeacon(256, 192, true);
-      PV_HUD.mission('MISSION 2 — THE GETAWAY CAR · steal the gold car · ' + fmtTime(m.timer));
-    } else {
-      m.phase = 'run'; m.cp = 0;
-      G.wanted = 5; PV_Police.setWanted(5);
-      PV_Story.play('beforeM3');
-      setBeacon(M3_CPS[0].x, M3_CPS[0].z, true);
-      PV_HUD.mission('MISSION 3 — THE DRAGNET · 5 stars · reach the safehouse · ' + fmtTime(m.timer));
+  if (m.n === 0 && m.phase === 'deliver') {
+    if (dist2(px, pz, M1_DROP.x, M1_DROP.z) < 5) return { x: M1_DROP.x, z: M1_DROP.z, label: 'Deliver the package', action: () => completeMission() };
+  }
+  if (m.n === 1 && m.phase === 'steal') {
+    if (dist2(px, pz, M2_CAR.x, M2_CAR.z) < 5) return { x: M2_CAR.x, z: M2_CAR.z, label: 'Take the gold car', action: () => { m.phase = 'deliver'; m.target = { ...M2_DROP, label: 'Deliver the gold car' }; queueDialog('Mara', 'Gold car is mine. Now the drop.'); } };
+  }
+  return null;
+}
+
+function completeMission() {
+  const m = G.mission;
+  if (!m) return;
+  const pay = PAYS[m.n];
+  G.money += pay;
+  G.missionsDone[m.n] = true;
+  showCard(`MISSION PASSED — ${NAMES[m.n]}`, `+$${pay}`);
+  if (m.n === 0) { playStory('afterM1a'); playStory('afterM1b'); }
+  if (m.n === 1) playStory('afterM2');
+  if (m.n === 2) playStory('epilogue');
+  if (m.van) { G.scene.remove(m.van); }
+  if (m.goldCar && G.playerCar !== m.goldCar) { /* leave the car in the world */ }
+  G.mission = null;
+  G.wanted = Math.max(0, G.wanted - 2);
+  saveGame();
+}
+
+function failMission() {
+  const m = G.mission;
+  if (!m) return;
+  queueDialog('Rook', `${NAMES[m.n]} failed. The clock ran out. Come back when you are ready.`);
+  if (m.van) G.scene.remove(m.van);
+  G.mission = null;
+}
+
+export function missionTarget() {
+  const m = G.mission;
+  return m ? m.target : null;
+}
+
+export function updateMissions(dt) {
+  const m = G.mission;
+  if (!m) return;
+  m.timer -= dt;
+  if (m.timer <= 0) { failMission(); return; }
+  const px = G.playerCar ? G.playerCar.position.x : (G.player ? G.player.position.x : 0);
+  const pz = G.playerCar ? G.playerCar.position.z : (G.player ? G.player.position.z : 0);
+  if (m.n === 0 && m.van) {
+    const van = m.van;
+    const d = dist2(px, pz, van.position.x, van.position.z);
+    let speed = 12;
+    if (d > 60) speed = 0;
+    else if (d < 5) speed = 18;
+    if (d >= 5 && d <= 60) m.tailTime += dt;
+    if (m.phase === 'tail' && m.tailTime >= 20) {
+      m.phase = 'pickup';
+      m.target = { ...M1_PICKUP, label: 'Pick up the package' };
+      queueDialog('Rook', 'Tail done. Pick up the package at the north road.');
     }
-    G.mission = m;
-    return true;
-  }
-  function failMission(why) {
-    const m = G.mission;
-    if (!m) return;
-    if (m.van) { const i = G.cars.indexOf(m.van); if (i >= 0) G.cars.splice(i, 1); G.scene.remove(m.van.mesh); }
-    if (m.gold && m.phase === 'steal') { const i = G.cars.indexOf(m.gold); if (i >= 0) G.cars.splice(i, 1); G.scene.remove(m.gold.mesh); }
-    G.mission = null;
-    setBeacon(0, 0, false);
-    PV_HUD.mission(null);
-    PV_HUD.toast('Mission failed — ' + why);
-  }
-  function completeMission() {
-    const m = G.mission;
-    if (!m) return;
-    const pay = [400, 800, 2300][m.idx];
-    G.money += pay;
-    G.missionsDone[m.idx] = true;
-    if (m.van) { const i = G.cars.indexOf(m.van); if (i >= 0) G.cars.splice(i, 1); G.scene.remove(m.van.mesh); }
-    G.mission = null;
-    setBeacon(0, 0, false);
-    PV_HUD.mission(null);
-    PV_HUD.missionCard('MISSION PASSED', '+$' + pay);
-    PV_HUD.update();
-    PV_Save.save();
-    if (m.idx === 0) PV_Story.play('afterM1');
-    if (m.idx === 1) PV_Story.play('afterM2');
-    if (m.idx === 2) { PV_Story.play('epilogue'); G.wanted = 0; PV_Police.setWanted(0); }
-  }
-  function update(dt) {
-    const m = G.mission;
-    if (!m) return;
-    m.timer -= dt;
-    if (m.timer <= 0) { failMission('out of time'); return; }
-    const p = G.player;
-    if (m.idx === 0) {
-      const van = m.van;
-      // van drives its fixed route; waits if the player is >60m behind,
-      // speeds up if the player is <5m behind.
-      const wp = VAN_ROUTE[m.vanWp];
-      const dWp = dist2(van.x, van.z, wp.x, wp.z);
-      if (dWp < 6) m.vanWp = (m.vanWp + 1) % VAN_ROUTE.length;
-      const pd = dist2(p.x, p.z, van.x, van.z);
-      let vSpeed = 10;
-      if (pd > 60) vSpeed = 0;
-      else if (pd < 5) vSpeed = 16;
-      const wantH = Math.atan2(wp.x - van.x, wp.z - van.z);
-      van.heading += angDiff(wantH, van.heading) * Math.min(1, dt * 2);
-      van.x += Math.sin(van.heading) * vSpeed * dt;
-      van.z += Math.cos(van.heading) * vSpeed * dt;
-      van.mesh.position.set(van.x, 0, van.z);
-      van.mesh.rotation.y = van.heading;
-      if (m.phase === 'tail') {
-        if (pd >= 5 && pd <= 60) m.tailTime += dt;
-        setBeacon(van.x, van.z, true);
-        PV_HUD.mission('MISSION 1 — THE TAIL · stay 5–60m behind · ' + Math.floor(m.tailTime) + '/20s · ' + fmtTime(m.timer));
-        if (m.tailTime >= 20) {
-          m.phase = 'pickup';
-          setBeacon(m.pickup.x, m.pickup.z, true);
-          PV_HUD.toast('Tail done — grab the package at the pickup point.');
-        }
-      } else if (m.phase === 'pickup') {
-        setBeacon(m.pickup.x, m.pickup.z, true);
-        PV_HUD.mission('MISSION 1 — THE TAIL · pick up the package · ' + fmtTime(m.timer));
-        if (dist2(p.x, p.z, m.pickup.x, m.pickup.z) < 6) {
-          m.phase = 'deliver';
-          setBeacon(m.deliver.x, m.deliver.z, true);
-          PV_HUD.toast('Package secured — deliver it to the drop.');
-        }
-      } else if (m.phase === 'deliver') {
-        setBeacon(m.deliver.x, m.deliver.z, true);
-        PV_HUD.mission('MISSION 1 — THE TAIL · deliver the package · ' + fmtTime(m.timer));
-        if (dist2(p.x, p.z, m.deliver.x, m.deliver.z) < 6) completeMission();
+    if (m.phase === 'tail') {
+      const wp = M1_ROUTE[m.routeIdx];
+      const dx = wp.x - van.position.x, dz = wp.z - van.position.z;
+      const dd = Math.sqrt(dx * dx + dz * dz);
+      if (dd < 3) { m.routeIdx = (m.routeIdx + 1) % M1_ROUTE.length; }
+      else {
+        const step = Math.min(dd, speed * dt);
+        van.position.x += (dx / dd) * step;
+        van.position.z += (dz / dd) * step;
+        van.rotation.y = Math.atan2(dx, dz) + Math.PI / 2;
       }
-    } else if (m.idx === 1) {
-      if (m.phase === 'steal') {
-        setBeacon(m.gold.x, m.gold.z, true);
-        PV_HUD.mission('MISSION 2 — THE GETAWAY CAR · steal the gold car · ' + fmtTime(m.timer));
-        if (p.car === m.gold) {
-          m.phase = 'deliver';
-          setBeacon(m.deliver.x, m.deliver.z, true);
-          PV_HUD.toast('Gold car taken — get it to the garage.');
-        }
-      } else {
-        setBeacon(m.deliver.x, m.deliver.z, true);
-        PV_HUD.mission('MISSION 2 — THE GETAWAY CAR · deliver to the garage · ' + fmtTime(m.timer));
-        if (p.car === m.gold && dist2(p.x, p.z, m.deliver.x, m.deliver.z) < 8) completeMission();
-      }
-    } else {
-      if (m.cp < M3_CPS.length) {
-        const cp = M3_CPS[m.cp];
-        setBeacon(cp.x, cp.z, true);
-        PV_HUD.mission('MISSION 3 — THE DRAGNET · checkpoint ' + (m.cp + 1) + '/' + M3_CPS.length + ' · ' + fmtTime(m.timer));
-        if (dist2(p.x, p.z, cp.x, cp.z) < 20) {
-          m.cp++;
-          if (m.cp >= M3_CPS.length) {
-            setBeacon(M3_SAFE.x, M3_SAFE.z, true);
-            PV_HUD.toast('All checkpoints — reach the safehouse!');
-          }
-        }
-      } else {
-        setBeacon(M3_SAFE.x, M3_SAFE.z, true);
-        PV_HUD.mission('MISSION 3 — THE DRAGNET · reach the safehouse · ' + fmtTime(m.timer));
-        if (dist2(p.x, p.z, M3_SAFE.x, M3_SAFE.z) < 16) completeMission();
-      }
+      m.target = { x: van.position.x, z: van.position.z, label: `Follow the van (${Math.round(m.tailTime)}/20s)` };
     }
   }
-  return { startMission, update, completeMission, failMission, M3_CPS, M3_SAFE, VAN_ROUTE };
-})();
+  if (m.n === 1 && m.phase === 'deliver') {
+    if (dist2(px, pz, M2_DROP.x, M2_DROP.z) < 12) completeMission();
+  }
+  if (m.n === 2) {
+    if (m.phase === 'cps') {
+      const cp = M3_CPS[m.cpIdx];
+      if (dist2(px, pz, cp.x, cp.z) < 20) {
+        m.cpIdx++;
+        if (m.cpIdx >= M3_CPS.length) {
+          m.phase = 'safe';
+          m.target = { ...M3_SAFE, label: 'Reach the safehouse' };
+          queueDialog('Mara', 'All checkpoints. Now the safehouse.');
+        } else {
+          m.target = { ...M3_CPS[m.cpIdx], label: `Checkpoint ${m.cpIdx + 1}/3` };
+        }
+      }
+    } else if (m.phase === 'safe') {
+      if (dist2(px, pz, M3_SAFE.x, M3_SAFE.z) < 16) completeMission();
+    }
+  }
+}

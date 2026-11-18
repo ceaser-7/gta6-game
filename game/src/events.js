@@ -1,58 +1,71 @@
-// Living world: street events every 45-75s (fender-bender or police stop).
-const PV_Events = (() => {
-  function spawnEvent() {
-    const kind = Math.random() < 0.6 ? 'fender' : 'stop';
-    // pick a road spot
-    const k = randi(0, 14), along = rand(-380, 380);
-    const horiz = Math.random() < 0.5;
-    const c = -448 + k * 64;
-    const x = horiz ? along : c, z = horiz ? c : along;
-    const heading = horiz ? (Math.random() < 0.5 ? 0 : Math.PI) : (Math.random() < 0.5 ? Math.PI / 2 : -Math.PI / 2);
-    const cars = [];
-    if (kind === 'fender') {
-      const c1 = PV_Vehicles.makeCar('sedan', x, z, heading, 0x8a3a3a);
-      const c2 = PV_Vehicles.makeCar('suv', x + Math.sin(heading) * 5, z + Math.cos(heading) * 5, heading + 0.5, 0x3a5a8a);
-      c1.driver = 'event'; c2.driver = 'event';
-      cars.push(c1, c2);
-    } else {
-      const c1 = PV_Vehicles.makeCar('sedan', x, z, heading, 0x2e2e2e);
-      c1.driver = 'event'; cars.push(c1);
-    }
-    for (const c of cars) G.cars.push(c);
-    // a driver ped standing by
-    const ped = PV_Traffic.makePed(x + 3, z + 2, { state: 'stand' });
-    ped.eventPed = true; ped.standT = 45;
-    G.event = { kind, cars, ped, t: 40, cleared: false };
-    PV_HUD.toast(kind === 'fender' ? 'Street event: fender-bender ahead' : 'Street event: police stop ahead');
+// Porto Verde — street events: fender-benders and police stops that appear
+// on the road near the player, last ~40 s, then clear. All original.
+import { G, rand, pick, roadPoint } from './util.js';
+import { makeCar, makePoliceCar } from './vehicles.js';
+import { addPed } from './peds.js';
+import { toast } from './hud.js';
+
+export function updateEvents(dt) {
+  if (G.interior) return;
+  if (G.event) {
+    G.event.t -= dt;
+    if (G.event.t <= 0) clearEvent();
+    return;
   }
-  function clearEvent() {
-    const e = G.event;
-    if (!e) return;
-    e.cleared = true;
-    for (const c of e.cars) {
-      // if the player stole an event car, it is not restored
-      if (c.driver === 'player') continue;
-      const i = G.cars.indexOf(c);
-      if (i >= 0) G.cars.splice(i, 1);
-      G.scene.remove(c.mesh);
-    }
-    if (e.ped) {
-      const i = G.peds.indexOf(e.ped);
-      if (i >= 0) G.peds.splice(i, 1);
-      G.scene.remove(e.ped.mesh);
-    }
-    G.event = null;
-    G.eventT = rand(45, 75);
+  G.eventT -= dt;
+  if (G.eventT > 0) return;
+  G.eventT = rand(45, 75);
+  spawnEvent();
+}
+
+function nearPlayerRoad() {
+  const px = G.player ? G.player.position.x : 0;
+  const pz = G.player ? G.player.position.z : 0;
+  const p = roadPoint(px + rand(-100, 100), pz + rand(-100, 100));
+  return { x: Math.max(-420, Math.min(420, p.x)), z: Math.max(-420, Math.min(420, p.z)) };
+}
+
+function spawnEvent() {
+  const kind = Math.random() < 0.6 ? 'fender' : 'stop';
+  const spot = nearPlayerRoad();
+  const cars = [], peds = [];
+  if (kind === 'fender') {
+    const c1 = makeCar('sedan');
+    c1.position.set(spot.x, 0, spot.z); c1.rotation.y = rand(0, Math.PI * 2);
+    const c2 = makeCar('suv');
+    c2.position.set(spot.x + 3, 0, spot.z + 2); c2.rotation.y = c1.rotation.y + 0.4;
+    G.scene.add(c1); G.scene.add(c2);
+    cars.push(c1, c2);
+    const d = addPed('Vic', spot.x + 2, spot.z + 4, 'event');
+    peds.push(d);
+    toast('A fender-bender up ahead. Two drivers are arguing.');
+  } else {
+    const pc = makePoliceCar();
+    pc.position.set(spot.x, 0, spot.z); pc.rotation.y = rand(0, Math.PI * 2);
+    const c = makeCar('sedan');
+    c.position.set(spot.x + 4, 0, spot.z + 1); c.rotation.y = pc.rotation.y;
+    G.scene.add(pc); G.scene.add(c);
+    cars.push(pc, c);
+    const d = addPed('Vic', spot.x + 2, spot.z + 3, 'event');
+    peds.push(d);
+    toast('A police stop up ahead. Best keep driving.');
   }
-  function update(dt) {
-    if (G.event) {
-      G.event.t -= dt;
-      if (G.event.t <= 0) clearEvent();
-      return;
-    }
-    if (!G.started || G.over) return;
-    G.eventT -= dt;
-    if (G.eventT <= 0) spawnEvent();
+  G.event = { kind, cars, peds, t: 40, x: spot.x, z: spot.z };
+}
+
+function clearEvent() {
+  const ev = G.event;
+  if (!ev) return;
+  for (const car of ev.cars) {
+    if (G.playerCar === car) continue;
+    G.scene.remove(car);
+    const i = G.cars.indexOf(car);
+    if (i >= 0) G.cars.splice(i, 1);
   }
-  return { update, spawnEvent, clearEvent };
-})();
+  for (const ped of ev.peds) {
+    G.scene.remove(ped.mesh);
+    const i = G.peds.indexOf(ped);
+    if (i >= 0) G.peds.splice(i, 1);
+  }
+  G.event = null;
+}
