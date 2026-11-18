@@ -2,45 +2,78 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Porto Verde — an open-world crime game</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="data:,">
+<title>Porto Verde — an open-world crime game</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: #0e1420; font-family: 'Segoe UI', system-ui, sans-serif; color: #e8e0cc; }
-  canvas { display: block; }
-  .hud { position: fixed; top: 12px; left: 12px; display: flex; flex-wrap: wrap; gap: 8px; z-index: 10; max-width: 60vw; }
-  .pill { background: rgba(10, 14, 20, 0.72); border: 1px solid rgba(232, 224, 204, 0.25); border-radius: 20px; padding: 6px 12px; font-size: 14px; font-weight: 600; }
-  #money { color: #7dd87d; }
-  #wanted { color: #ff5555; }
-  #minimap { position: fixed; right: 14px; bottom: 14px; width: 180px; height: 180px; border-radius: 50%; border: 2px solid rgba(232, 224, 204, 0.4); z-index: 10; background: rgba(10, 14, 20, 0.6); }
-  #bigmap { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 640px; height: 640px; border-radius: 50%; border: 3px solid rgba(232, 224, 204, 0.5); z-index: 20; background: rgba(10, 14, 20, 0.9); }
-  .dialog { position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%); width: min(560px, 90vw); background: rgba(10, 14, 20, 0.88); border: 1px solid #e8c33c; border-radius: 10px; padding: 14px 18px; z-index: 15; display: none; }
-  .dialog b { color: #e8c33c; font-size: 15px; }
-  .dialog p { margin: 6px 0; font-size: 15px; line-height: 1.45; }
-  .dialog span { font-size: 12px; opacity: 0.6; }
-  .prompt { position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%); background: rgba(10, 14, 20, 0.8); border: 1px solid rgba(232, 224, 204, 0.4); border-radius: 8px; padding: 6px 14px; font-size: 14px; font-weight: 600; z-index: 12; display: none; }
-  .toast { position: fixed; left: 50%; top: 64px; transform: translateX(-50%); background: rgba(10, 14, 20, 0.85); border-radius: 8px; padding: 8px 16px; font-size: 14px; z-index: 12; display: none; }
-  .card { position: fixed; left: 50%; top: 32%; transform: translate(-50%, -50%); text-align: center; background: rgba(10, 14, 20, 0.9); border: 2px solid #e8c33c; border-radius: 12px; padding: 22px 40px; z-index: 18; display: none; }
-  .card b { font-size: 28px; color: #e8c33c; letter-spacing: 2px; }
-  .card p { margin-top: 6px; font-size: 16px; }
-  .wasted { position: fixed; inset: 0; background: rgba(40, 0, 0, 0.75); display: none; z-index: 30; text-align: center; padding-top: 30vh; }
-  .wasted h1 { font-size: 72px; color: #ff4444; letter-spacing: 10px; }
-  .wasted p { margin-top: 12px; font-size: 18px; }
-  .hint { position: fixed; left: 12px; bottom: 14px; background: rgba(10, 14, 20, 0.72); border-radius: 8px; padding: 8px 12px; font-size: 13px; max-width: 420px; z-index: 10; display: none; }
-  .menu { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; background: linear-gradient(rgba(10, 14, 20, 0.45), rgba(10, 14, 20, 0.75)); z-index: 40; }
-  .menu h1 { font-size: 84px; letter-spacing: 14px; color: #e8c33c; text-shadow: 0 4px 24px rgba(0, 0, 0, 0.8); }
-  .menu p { font-size: 18px; margin-top: 10px; }
-  .menu .sub { color: #ff9a4a; font-weight: 600; }
-  .menu button { margin-top: 26px; font-size: 22px; font-weight: 700; letter-spacing: 3px; padding: 14px 44px; border-radius: 10px; border: none; background: #e8c33c; color: #14100a; cursor: pointer; }
-  .menu button:hover { background: #ffd24a; }
-  .menu .controls { font-size: 13px; opacity: 0.85; line-height: 1.7; margin-top: 22px; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0e1a; font-family: 'Segoe UI', system-ui, sans-serif; color: #fff; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .hud { position: fixed; z-index: 5; pointer-events: none; text-shadow: 0 1px 3px #000; }
+  #top-left { top: 14px; left: 16px; font-size: 20px; line-height: 1.5; }
+  #money { font-size: 28px; font-weight: 700; color: #7dff8a; }
+  #wanted { font-size: 22px; letter-spacing: 2px; }
+  .star.on { color: #ff2a2a; }
+  .star.off { color: rgba(255,255,255,0.25); }
+  #health { color: #ff8a8a; }
+  #top-right { top: 14px; right: 16px; text-align: right; font-size: 15px; line-height: 1.6; }
+  #minimap { border-radius: 50%; border: 2px solid rgba(255,255,255,0.5); background: #20242a; }
+  #coins { color: #ffd34d; font-weight: 600; }
+  #race { color: #ffd34d; font-weight: 700; }
+  #bottom-left { bottom: 14px; left: 16px; font-size: 15px; line-height: 1.6; color: #d8d8d8; }
+  #bottom-right { bottom: 14px; right: 16px; font-size: 15px; text-align: right; line-height: 1.6; }
+  #speed { font-size: 26px; font-weight: 700; }
+  #mission { top: 14px; left: 50%; transform: translateX(-50%); font-size: 17px; font-weight: 600; color: #ffd34d; }
+  #objective { top: 40px; left: 50%; transform: translateX(-50%); font-size: 14px; color: #fff; }
+  #compass { bottom: 14px; left: 50%; transform: translateX(-50%); font-size: 15px; letter-spacing: 4px; color: #cfd8e8; }
+  #interact { bottom: 110px; left: 50%; transform: translateX(-50%); font-size: 18px; font-weight: 600; background: rgba(0,0,0,0.6); padding: 8px 16px; border-radius: 8px; display: none; }
+  #dialog { bottom: 150px; left: 50%; transform: translateX(-50%); width: 520px; max-width: 90vw; background: rgba(10,12,20,0.88); border: 1px solid #555; border-radius: 10px; padding: 14px 18px; display: none; }
+  #dialog-name { color: #ffd34d; font-weight: 700; margin-bottom: 4px; }
+  #dialog-text { font-size: 17px; line-height: 1.45; }
+  #dialog-hint { margin-top: 8px; font-size: 12px; color: #999; }
+  #toast { top: 76px; left: 50%; transform: translateX(-50%); font-size: 15px; background: rgba(0,0,0,0.65); padding: 7px 14px; border-radius: 7px; display: none; max-width: 90vw; text-align: center; }
+  #card { top: 34%; left: 50%; transform: translate(-50%,-50%); text-align: center; display: none; }
+  #card-title { font-size: 34px; font-weight: 800; letter-spacing: 2px; color: #7dff8a; }
+  #card-sub { font-size: 20px; color: #ffd34d; margin-top: 4px; }
+  #brief { top: 22%; left: 50%; transform: translateX(-50%); width: 480px; max-width: 90vw; background: rgba(10,12,20,0.85); border: 1px solid #ffd34d; border-radius: 10px; padding: 14px 18px; display: none; }
+  #brief-title { font-size: 20px; font-weight: 700; color: #ffd34d; margin-bottom: 4px; }
+  #brief-text { font-size: 15px; line-height: 1.45; }
+  #menu { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: center; background: linear-gradient(180deg, rgba(5,8,16,0.55), rgba(5,8,16,0.85)); text-align: center; }
+  #menu h1 { font-size: 64px; letter-spacing: 6px; color: #ffd34d; text-shadow: 0 3px 18px #000; }
+  #menu h2 { font-size: 20px; color: #fff; margin: 8px 0 22px; font-weight: 400; }
+  #menu p { max-width: 560px; font-size: 15px; line-height: 1.6; color: #d8d8e8; margin-bottom: 18px; }
+  .btn { pointer-events: auto; cursor: pointer; font-size: 19px; font-weight: 700; padding: 12px 34px; border: none; border-radius: 8px; background: #ffd34d; color: #1a1a1a; margin: 4px; }
+  .btn:hover { background: #ffe14d; }
+  .btn.ghost { background: rgba(255,255,255,0.15); color: #fff; border: 1px solid #fff; }
+  #controls { font-size: 13px; color: #aab; margin-top: 16px; line-height: 1.7; }
+  #wasted { position: fixed; inset: 0; z-index: 30; display: none; align-items: center; justify-content: center; background: rgba(20,0,0,0.75); font-size: 64px; font-weight: 800; letter-spacing: 8px; color: #ff2a2a; }
+  #map-overlay { position: fixed; inset: 0; z-index: 15; display: none; align-items: center; justify-content: center; background: rgba(5,8,16,0.85); }
+  #fullmap { border: 2px solid #555; border-radius: 8px; background: #20242a; }
 </style>
-<script type="importmap">
-{ "imports": { "three": "./vendor/three.module.min.js" } }
-</script>
 </head>
 <body>
+<canvas id="game"></canvas>
+<div class="hud" id="top-left"><div id="money">$200</div><div id="wanted"></div><div id="health">♥ 100</div></div>
+<div class="hud" id="top-right"><canvas id="minimap" width="150" height="150"></canvas><div id="coins">◉ Verde Coins 0/12</div><div id="race"></div></div>
+<div class="hud" id="bottom-left"><div id="radio">♪ VERDE FM</div><div id="ammo"></div></div>
+<div class="hud" id="bottom-right"><div id="speed"></div></div>
+<div class="hud" id="mission"></div>
+<div class="hud" id="objective"></div>
+<div class="hud" id="compass">N</div>
+<div class="hud" id="interact"></div>
+<div class="hud" id="dialog"><div id="dialog-name"></div><div id="dialog-text"></div><div id="dialog-hint">ENTER — continue</div></div>
+<div class="hud" id="toast"></div>
+<div class="hud" id="card"><div id="card-title"></div><div id="card-sub"></div></div>
+<div class="hud" id="brief"><div id="brief-title"></div><div id="brief-text"></div></div>
+<div id="map-overlay"><canvas id="fullmap" width="560" height="560"></canvas></div>
+<div id="wasted">WASTED</div>
+<div id="menu">
+  <h1>PORTO VERDE</h1>
+  <h2>An open-world crime game — Mara Voss owes Rook $40,000. Three jobs and she is free.</h2>
+  <p>Drive, talk, collect, race. Tail the courier van, steal the gold car, outrun a five-star dragnet. Find all 12 Verde Coins, win the Sunset Sprint, eat at El Faro, fix the project car at Sunray Garage. The city talks back — press E.</p>
+  <div><button class="btn" id="btn-start">START</button><button class="btn ghost" id="btn-continue">CONTINUE</button></div>
+  <div id="controls">WASD / arrows — move &amp; drive &nbsp;·&nbsp; Shift — run &nbsp;·&nbsp; Mouse — look (click to lock) &nbsp;·&nbsp; E — enter car / talk / enter shops &nbsp;·&nbsp; F — punch &nbsp;·&nbsp; Click — shoot &nbsp;·&nbsp; R — reload &nbsp;·&nbsp; H — horn &nbsp;·&nbsp; Q — radio &nbsp;·&nbsp; M — mute &nbsp;·&nbsp; Tab — map</div>
+</div>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>

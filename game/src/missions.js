@@ -1,149 +1,194 @@
-// Porto Verde — the three missions: M1 The Tail ($400), M2 Getaway Car
-// ($800), M3 Dragnet ($2,300). 240 s timers, road-based checkpoints,
-// story beats at the boundaries. All original.
-import { G, dist2, clamp, saveGame } from './util.js';
-import { makeCar } from './vehicles.js';
+// Porto Verde — missions: M1 The Tail ($400), M2 Getaway Car ($800), M3 Dragnet ($2,300).
+import * as THREE from '../vendor/three.module.min.js';
+import { G, dist, clamp } from './state.js';
+import { spawnCar, removeCar } from './cars.js';
 import { playStory } from './story.js';
-import { showCard, queueDialog } from './hud.js';
+import { addWanted, clearWanted } from './police.js';
 
-const M1_ROUTE = [
-  { x: -384, z: -320 }, { x: 320, z: -320 },
-  { x: 320, z: 320 }, { x: -384, z: 320 },
+export const ROOK_MARKER = { x: 32, z: 32 };
+export const MISSION_DEFS = [
+  { n: 1, name: 'The Tail', pay: 400, time: 240 },
+  { n: 2, name: 'Getaway Car', pay: 800, time: 240 },
+  { n: 3, name: 'Dragnet', pay: 2300, time: 240 },
 ];
-const M1_PICKUP = { x: 0, z: 320 };
-const M1_DROP = { x: -320, z: -320 };
-const M2_CAR = { x: 192, z: 256 };
-const M2_DROP = { x: -320, z: -192 };
-const M3_CPS = [{ x: 320, z: 320 }, { x: -320, z: 64 }, { x: 64, z: -320 }];
-const M3_SAFE = { x: -64, z: 320 };
-const PAYS = [400, 800, 2300];
-const NAMES = ['The Tail', 'Getaway Car', 'Dragnet'];
+
+let beacon = null;
+export function makeBeacon() {
+  beacon = new THREE.Mesh(
+    new THREE.CylinderGeometry(2.2, 2.2, 60, 12, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0xffd34d, transparent: true, opacity: 0.35, side: THREE.DoubleSide })
+  );
+  beacon.visible = false;
+  G.scene.add(beacon);
+  const marker = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, 0.5, 16), new THREE.MeshBasicMaterial({ color: 0xffd34d }));
+  marker.position.set(ROOK_MARKER.x, 0.3, ROOK_MARKER.z);
+  G.scene.add(marker);
+}
+function setBeacon(x, z) {
+  if (!beacon) return;
+  beacon.visible = true;
+  beacon.position.set(x, 30, z);
+}
+function hideBeacon() { if (beacon) beacon.visible = false; }
+
+export function nextMissionNum() {
+  for (let i = 0; i < 3; i++) if (!G.missionsDone[i]) return i + 1;
+  return 0;
+}
 
 export function startMission(n) {
   if (G.mission) return false;
-  if (G.missionsDone[n]) return false;
-  if (n === 0) {
-    const van = makeCar('van', 0x6b4a2e);
-    van.position.set(M1_ROUTE[0].x, 0, M1_ROUTE[0].z);
-    van.rotation.y = Math.PI / 2;
-    G.scene.add(van);
-    G.mission = { n, phase: 'tail', timer: 240, van, routeIdx: 1, tailTime: 0, target: { ...M1_ROUTE[1], label: 'Follow the van' } };
-    queueDialog('Rook', 'The Tail: follow the brown courier van. Stay 5 to 60 metres back. Do not spook it.');
-  } else if (n === 1) {
-    const car = makeCar('sports', 0xd8a920);
-    car.position.set(M2_CAR.x, 0, M2_CAR.z);
-    car.userData.parked = true; // stays put until Mara takes it.
-    G.scene.add(car);
-    G.cars.push(car);
-    G.mission = { n, phase: 'steal', timer: 240, goldCar: car, target: { ...M2_CAR, label: 'Steal the gold car' } };
-    queueDialog('Rook', 'Getaway Car: a gold sports car is parked uptown. Take it and bring it to the drop.');
-  } else {
-    G.wanted = 5;
-    G.mission = { n, phase: 'cps', timer: 240, cpIdx: 0, target: { ...M3_CPS[0], label: 'Checkpoint 1/3' } };
-    playStory('beforeM3');
-    queueDialog('Rook', 'Dragnet: five stars from the start. Hit all three checkpoints, then the safehouse.');
+  const def = MISSION_DEFS[n - 1];
+  const m = { n, def, phase: 'brief', t: def.time, tailT: 0, van: null, route: null, routeI: 0, objective: null };
+  G.mission = m;
+  G.missionNum = n;
+  if (n === 1) playStory('intro');
+  if (n === 3) playStory('beforeM3');
+  G.ui.brief && G.ui.brief(def.name, n === 1 ? 'Tail the brown courier van. Stay 5–60 m back — do not get made.' : n === 2 ? 'Steal the gold sports car at the marina and bring it to Sunray Garage.' : 'Run 5 checkpoints, then reach the safehouse. The whole city is hunting you.');
+  if (n === 1) beginTail(m);
+  if (n === 2) { m.phase = 'steal'; m.objective = { x: 320, z: 192 }; setBeacon(320, 192); }
+  if (n === 3) {
+    m.phase = 'cps'; m.cpI = 0;
+    m.cps = [{ x: -384, z: -320 }, { x: 0, z: -384 }, { x: 320, z: -192 }, { x: 192, z: 128 }, { x: -64, z: 320 }];
+    m.safehouse = { x: 256, z: 256 };
+    m.objective = m.cps[0];
+    G.wanted = 5; G.ui.updateHud && G.ui.updateHud();
+    setBeacon(m.cps[0].x, m.cps[0].z);
   }
+  G.ui.updateHud && G.ui.updateHud();
   return true;
 }
 
-export function missionInteract() {
+const VAN_ROUTE = [
+  { x: -384, z: -320 }, { x: -384, z: 320 }, { x: 320, z: 320 }, { x: 320, z: -320 }, { x: -384, z: -320 },
+];
+function beginTail(m) {
+  m.phase = 'tail';
+  m.route = VAN_ROUTE; m.routeI = 1;
+  const van = spawnCar('van', VAN_ROUTE[0].x, VAN_ROUTE[0].z, 0, { mission: true, color: 0x6a4a2a });
+  van.speed = 0;
+  m.van = van;
+  m.objective = { x: van.x, z: van.z, label: 'van' };
+  setBeacon(van.x, van.z);
+}
+
+function failMission(reason) {
   const m = G.mission;
-  if (!m || !G.player) return null;
-  const px = G.playerCar ? G.playerCar.position.x : G.player.position.x;
-  const pz = G.playerCar ? G.playerCar.position.z : G.player.position.z;
-  if (m.n === 0 && m.phase === 'pickup') {
-    if (dist2(px, pz, M1_PICKUP.x, M1_PICKUP.z) < 5) return { x: M1_PICKUP.x, z: M1_PICKUP.z, label: 'Pick up the package', action: () => { m.phase = 'deliver'; m.target = { ...M1_DROP, label: 'Deliver the package' }; queueDialog('Mara', 'Package in hand. Now the drop.'); } };
-  }
-  if (m.n === 0 && m.phase === 'deliver') {
-    if (dist2(px, pz, M1_DROP.x, M1_DROP.z) < 5) return { x: M1_DROP.x, z: M1_DROP.z, label: 'Deliver the package', action: () => completeMission() };
-  }
-  if (m.n === 1 && m.phase === 'steal') {
-    if (dist2(px, pz, M2_CAR.x, M2_CAR.z) < 5) return { x: M2_CAR.x, z: M2_CAR.z, label: 'Take the gold car', action: () => { m.phase = 'deliver'; m.target = { ...M2_DROP, label: 'Deliver the gold car' }; queueDialog('Mara', 'Gold car is mine. Now the drop.'); } };
-  }
-  return null;
+  if (!m) return;
+  cleanupMission(m);
+  G.ui.card && G.ui.card('MISSION FAILED', reason);
+  G.mission = null;
+  hideBeacon();
+  G.ui.updateHud && G.ui.updateHud();
 }
 
 function completeMission() {
   const m = G.mission;
   if (!m) return;
-  const pay = PAYS[m.n];
-  G.money += pay;
-  G.missionsDone[m.n] = true;
-  showCard(`MISSION PASSED — ${NAMES[m.n]}`, `+$${pay}`);
-  if (m.n === 0) { playStory('afterM1a'); playStory('afterM1b'); }
-  if (m.n === 1) playStory('afterM2');
-  if (m.n === 2) playStory('epilogue');
-  if (m.van) { G.scene.remove(m.van); }
-  if (m.goldCar && G.playerCar !== m.goldCar) { /* leave the car in the world */ }
+  const pay = m.def.pay;
+  G.player.money += pay;
+  G.missionsDone[m.n - 1] = true;
+  cleanupMission(m);
+  G.ui.card && G.ui.card('MISSION PASSED', `${m.def.name} — +$${pay}`);
+  if (m.n === 1) playStory('afterM1');
+  if (m.n === 2) playStory('afterM2');
+  if (m.n === 3) { playStory('epilogue'); clearWanted(); }
   G.mission = null;
-  G.wanted = Math.max(0, G.wanted - 2);
-  saveGame();
+  hideBeacon();
+  G.save && G.save();
+  G.ui.updateHud && G.ui.updateHud();
 }
 
-function failMission() {
-  const m = G.mission;
-  if (!m) return;
-  queueDialog('Rook', `${NAMES[m.n]} failed. The clock ran out. Come back when you are ready.`);
-  if (m.van) G.scene.remove(m.van);
-  G.mission = null;
-}
-
-export function missionTarget() {
-  const m = G.mission;
-  return m ? m.target : null;
+function cleanupMission(m) {
+  if (m.van) { removeCar(m.van); m.van = null; }
 }
 
 export function updateMissions(dt) {
   const m = G.mission;
   if (!m) return;
-  m.timer -= dt;
-  if (m.timer <= 0) { failMission(); return; }
-  const px = G.playerCar ? G.playerCar.position.x : (G.player ? G.player.position.x : 0);
-  const pz = G.playerCar ? G.playerCar.position.z : (G.player ? G.player.position.z : 0);
-  if (m.n === 0 && m.van) {
+  m.t -= dt;
+  if (m.t <= 0) { failMission('Time ran out'); return; }
+  const p = G.player;
+  if (m.n === 1) {
     const van = m.van;
-    const d = dist2(px, pz, van.position.x, van.position.z);
-    let speed = 12;
-    if (d > 60) speed = 0;
-    else if (d < 5) speed = 18;
-    if (d >= 5 && d <= 60) m.tailTime += dt;
-    if (m.phase === 'tail' && m.tailTime >= 20) {
-      m.phase = 'pickup';
-      m.target = { ...M1_PICKUP, label: 'Pick up the package' };
-      queueDialog('Rook', 'Tail done. Pick up the package at the north road.');
-    }
+    if (!van) return;
+    const d = dist(p.x, p.z, van.x, van.z);
     if (m.phase === 'tail') {
-      const wp = M1_ROUTE[m.routeIdx];
-      const dx = wp.x - van.position.x, dz = wp.z - van.position.z;
-      const dd = Math.sqrt(dx * dx + dz * dz);
-      if (dd < 3) { m.routeIdx = (m.routeIdx + 1) % M1_ROUTE.length; }
+      // van waits if the player falls >60 m behind, speeds up if <5 m
+      let speed = 9;
+      if (d > 60) speed = 0;
+      else if (d < 5) speed = 14;
+      const tgt = m.route[m.routeI];
+      const dx = tgt.x - van.x, dz = tgt.z - van.z, dd = Math.hypot(dx, dz);
+      if (dd < 6) { m.routeI = (m.routeI + 1) % m.route.length; }
       else {
-        const step = Math.min(dd, speed * dt);
-        van.position.x += (dx / dd) * step;
-        van.position.z += (dz / dd) * step;
-        van.rotation.y = Math.atan2(dx, dz) + Math.PI / 2;
+        const want = Math.atan2(dx, dz);
+        let ddy = want - van.yaw;
+        while (ddy > Math.PI) ddy -= Math.PI * 2;
+        while (ddy < -Math.PI) ddy += Math.PI * 2;
+        van.yaw += clamp(ddy, -1.6 * dt, 1.6 * dt);
+        van.x += Math.sin(van.yaw) * speed * dt;
+        van.z += Math.cos(van.yaw) * speed * dt;
+        van.mesh.position.set(van.x, 0, van.z);
+        van.mesh.rotation.y = van.yaw;
       }
-      m.target = { x: van.position.x, z: van.position.z, label: `Follow the van (${Math.round(m.tailTime)}/20s)` };
+      if (d >= 8 && d <= 60) m.tailT += dt;
+      if (m.tailT >= 45) {
+        m.phase = 'pickup';
+        m.objective = { x: -192, z: 192 };
+        setBeacon(-192, 192);
+        G.ui.toast && G.ui.toast('Tail done — pick up the package at the plaza.');
+      }
+      m.objective = { x: van.x, z: van.z, label: 'van' };
+      if (m.phase === 'tail') setBeacon(van.x, van.z);
+    } else if (m.phase === 'pickup') {
+      if (dist(p.x, p.z, -192, 192) < 6) {
+        m.phase = 'deliver';
+        m.objective = { x: 256, z: 256 };
+        setBeacon(256, 256);
+        G.ui.toast && G.ui.toast('Package secured — deliver it to the safehouse.');
+      }
+    } else if (m.phase === 'deliver') {
+      if (dist(p.x, p.z, 256, 256) < 8) completeMission();
     }
-  }
-  if (m.n === 1 && m.phase === 'deliver') {
-    if (dist2(px, pz, M2_DROP.x, M2_DROP.z) < 12) completeMission();
-  }
-  if (m.n === 2) {
+  } else if (m.n === 2) {
+    if (m.phase === 'steal') {
+      const gold = G.goldCar;
+      if (gold && !p.onFoot && p.car === gold) {
+        m.phase = 'deliver';
+        m.objective = { x: 192, z: -128 };
+        setBeacon(192, -128);
+        addWanted(2);
+        G.ui.toast && G.ui.toast('Gold car stolen — get it to Sunray Garage!');
+      }
+    } else if (m.phase === 'deliver') {
+      if (p.car === G.goldCar && dist(p.x, p.z, 192, -128) < 10) completeMission();
+    }
+  } else if (m.n === 3) {
     if (m.phase === 'cps') {
-      const cp = M3_CPS[m.cpIdx];
-      if (dist2(px, pz, cp.x, cp.z) < 20) {
-        m.cpIdx++;
-        if (m.cpIdx >= M3_CPS.length) {
-          m.phase = 'safe';
-          m.target = { ...M3_SAFE, label: 'Reach the safehouse' };
-          queueDialog('Mara', 'All checkpoints. Now the safehouse.');
+      const cp = m.cps[m.cpI];
+      if (cp && dist(p.x, p.z, cp.x, cp.z) < 20) {
+        m.cpI++;
+        if (m.cpI >= m.cps.length) {
+          m.phase = 'safehouse';
+          m.objective = m.safehouse;
+          setBeacon(m.safehouse.x, m.safehouse.z);
+          G.ui.toast && G.ui.toast('All checkpoints — reach the safehouse!');
         } else {
-          m.target = { ...M3_CPS[m.cpIdx], label: `Checkpoint ${m.cpIdx + 1}/3` };
+          m.objective = m.cps[m.cpI];
+          setBeacon(m.objective.x, m.objective.z);
+          G.ui.toast && G.ui.toast(`Checkpoint ${m.cpI}/${m.cps.length}`);
         }
       }
-    } else if (m.phase === 'safe') {
-      if (dist2(px, pz, M3_SAFE.x, M3_SAFE.z) < 16) completeMission();
+    } else if (m.phase === 'safehouse') {
+      if (dist(p.x, p.z, m.safehouse.x, m.safehouse.z) < 16) completeMission();
     }
   }
+  G.ui.updateHud && G.ui.updateHud();
+}
+
+export function missionObjective() {
+  const m = G.mission;
+  if (!m || !m.objective) return null;
+  return m.objective;
 }
