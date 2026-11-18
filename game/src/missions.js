@@ -1,265 +1,199 @@
-// The story: three jobs for Rook, and the debt that ends them.
-// One clear job: brief each mission, watch its objectives, and pay or fail it.
+// Porto Verde — missions and story: three jobs for fixer Rook, eight story beats.
+// Mara Voss, getaway driver, owes a debt. All dialogue written fresh here.
 import * as THREE from 'three';
-import { createCar, stepCar } from './vehicles.js';
-import { showPassed } from './hud.js';
-import { playStory } from './story.js';
+import { G, CFG, rand, pick, clamp, dist2, fmtMoney } from './state.js';
+import { queueDialog, showCard, showWasted, setMission } from './hud.js';
+import { makeCar } from './vehicles.js';
 
-const MISSIONS = [
-  {
-    name: 'Job 1 — The Pickup',
-    brief: 'Mara. First job. A courier in a brown van is carrying the package to the Old Town market — tail him there. Stay close enough to keep him in sight, but do not crowd him or he will bolt. When he stops, grab the package and bring it to the Harbor warehouse. Four minutes, and do not dawdle.',
-    who: 'Rook — fixer',
-    reward: 400,
-  },
-  {
-    name: 'Job 2 — The Getaway Car',
-    brief: 'A client wants a Sunray GT, bright orange, parked in Downtown. Take it — quietly if you can — and bring it to the lockup in the Marina. The owner will call it in, so expect the Verde PD on your tail.',
-    who: 'Rook — fixer',
-    reward: 800,
-  },
-  {
-    name: 'Job 3 — The Dragnet',
-    brief: 'Last job, Mara. The PD knows your face and they are already rolling. Get to the beach hideout before they box you in. Make it there and the debt is paid — you walk away clean.',
-    who: 'Rook — fixer',
-    reward: 1500,
-  },
-];
+export const MISSION_NAMES = ['The Tail', 'The Getaway Car', 'The Dragnet'];
+export const MISSION_PAY = [400, 800, 2300];
 
-const TARGETS = [
-  { courier: { x: -54, z: -30 }, route: [[-54, 108], [-162, 108], [-162, 270], [-270, 270]], pickup: { x: -270, z: 270, label: 'Pick up the package' }, deliver: { x: -324, z: -270, label: 'Deliver to the Harbor warehouse' }, time: 240 },
-  { car: { x: 270, z: -270, label: 'Steal the orange Sunray GT' }, deliver: { x: 270, z: 270, label: 'Deliver the car to the Marina lockup' }, time: 0 },
-  { hideout: { x: 0, z: 400, label: 'Reach the beach hideout' }, time: 240 },
-];
+const BEATS = {
+  intro: [
+    ['Rook', "Mara. You owe me forty thousand, and I am done waiting. Three jobs. Do them right and we are square."],
+    ['Mara', "Three jobs. Then I am done with you, Rook. For good."],
+  ],
+  afterM1: [
+    ['Rook', "The debt still stands at $40,000. Two jobs left. Do not make me come looking for you."],
+    ['Mara', "I am worn out from taking the fall for that botched job. I will finish, but you do not own me."],
+  ],
+  afterM2: [
+    ['Rook', "That car belonged to a collector. He will pay double to get it back. You did well, Mara."],
+    ['Mara', "One more job and I am free. Tell me the last one is not a trap."],
+  ],
+  beforeM3: [
+    ['Rook', "Last job, Mara. The police know your face now. Five stars the moment you start the engine."],
+    ['Mara', "Then I drive like I have nothing to lose. Because I do not."],
+  ],
+  epilogue: [
+    ['Rook', "Forty thousand, paid in full. You are a free woman, Mara Voss."],
+    ['Mara', "Free. And I am keeping the keys. Porto Verde is mine to drive now."],
+  ],
+  coins: [
+    ['Rook', "You found all twelve. That is the kind of eye I pay for."],
+  ],
+  projectCar: [
+    ['Lena', "She purrs now. That old project car has another ten years in her. Thanks, Mara."],
+  ],
+};
 
-function makeBeacon() {
-  // v4: slimmed — v3's 30-unit yellow tube dominated every shot. A thin pillar,
-  // a ground ring and a floating diamond are enough to read as a waypoint.
-  const g = new THREE.Group();
-  const beam = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.7, 0.7, 18, 12, 1, true),
-    new THREE.MeshBasicMaterial({ color: 0xffd23e, transparent: true, opacity: 0.15, side: THREE.DoubleSide, depthWrite: false }),
-  );
-  beam.position.y = 9;
-  const ring = new THREE.Mesh(
-    new THREE.RingGeometry(1.6, 2.4, 24),
-    new THREE.MeshBasicMaterial({ color: 0xffd23e, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }),
-  );
-  ring.rotation.x = -Math.PI / 2; ring.position.y = 0.15;
-  const diamond = new THREE.Mesh(
-    new THREE.OctahedronGeometry(0.6),
-    new THREE.MeshBasicMaterial({ color: 0xffd23e }),
-  );
-  diamond.position.y = 4;
-  g.add(beam, ring, diamond);
-  g.userData = { diamond, ring };
-  return g;
+export function playStory(key) {
+  for (const [speaker, line] of BEATS[key]) queueDialog(speaker, line);
 }
 
-export function createMissions(G) {
-  G.missionIndex = 0;
-  G.mission = null;
-  G.beacon = makeBeacon();
-  G.beacon.visible = false;
-  G.scene.add(G.beacon);
-  G.missionCar = null;
-  G.nextBriefIn = 2.5; // seconds after starting before the first briefing
-}
+// The courier van's fixed route (a loop around Downtown and the Marina).
+const VAN_ROUTE = [
+  [108, -162], [260, -162], [260, 130], [130, 260], [-130, 260], [-260, 130], [-260, -130], [0, -260],
+];
+const DROP_POINTS = {
+  pickup: [-195, 195], deliver: [292, -65],
+  m2car: [0, -260], m2drop: [162, -108],
+  m3cps: [[-292, -292], [292, 292], [-32, -292]], safehouse: [-264, 258],
+};
 
-export function startMission(G, index) {
-  const def = MISSIONS[index];
-  const t = TARGETS[index];
-  const m = {
-    index, name: def.name, reward: def.reward,
-    stage: 'brief', timer: t.time, timeLeft: t.time,
-    target: null, packageGot: false,
-  };
+export function startMission(i) {
+  if (G.mission || G.missionsDone[i]) return false;
+  const m = { idx: i, timer: 240, target: null, phase: '', tailTime: 0, cp: 0, van: null, vanWp: 0, car: null };
   G.mission = m;
-  // v5: before the last job, Rook warns her and Mara answers — the stakes
-  // are spoken before the briefing, not just in it
-  if (index === 2) playStory(G, 'beforeM3');
-  G.hud.showDialog(def.who, def.brief, () => {
-    m.stage = 'active';
-    if (index === 0) {
-      // stage 0: tail the courier's van to the market — stay close, don't spook him
-      const courier = createCar(G, t.courier.x, t.courier.z, 0, 0, { type: 'van', driver: 'courier', maxSpeed: 15, accel: 8 });
-      courier.group.children[0].material.color.set(0x8a5a2e);
-      G.courierCar = courier;
-      m.tailCar = courier;
-      m.tailWp = 0;
-      m.tailRoute = t.route;
-      m.stage = 'tail';
-      m.target = { x: courier.pos.x, z: courier.pos.z };
-      G.hud.setObjective(`${def.name}: Tail the courier to the Old Town market — stay close, don't spook him`);
-      G.hud.toast('Follow the brown van');
-    } else if (index === 1) {
-      // park the getaway car in Downtown
-      const car = createCar(G, t.car.x, t.car.z, 0.8, 0, { missionCar: true, maxSpeed: 34, accel: 20 });
-      car.group.children[0].material.color.set(0xe86a10);
-      G.missionCar = car;
-      m.target = t.car; m.stage2 = t.deliver;
-      G.hud.setObjective(`${def.name}: ${t.car.label}`);
-    } else {
-      m.target = t.hideout;
-      G.setWanted(3);
-      G.hud.setObjective(`${def.name}: ${t.hideout.label} — lose them or outrun them!`);
-    }
-    moveBeacon(G);
-    G.saveGame();
-  });
-}
-
-function moveBeacon(G) {
-  const m = G.mission;
-  if (!m || !m.target) { G.beacon.visible = false; return; }
-  G.beacon.visible = true;
-  G.beacon.position.set(m.target.x, 0, m.target.z);
-}
-
-export function updateMissions(G, dt) {
-  const m = G.mission;
-  // beacon pulse
-  if (G.beacon.visible) {
-    G.beacon.userData.diamond.rotation.y += dt * 2;
-    G.beacon.userData.diamond.position.y = 4 + Math.sin(G.time * 2.5) * 0.8;
-    G.beacon.userData.ring.material.opacity = 0.5 + Math.sin(G.time * 3) * 0.3;
+  if (i === 0) {
+    m.phase = 'tail';
+    m.van = makeCar('van', 0x6b4a2e);
+    m.van.position.set(108, 0, -162);
+    m.van.userData.van = true;
+    G.scene.add(m.van); G.cars.push(m.van);
+    m.target = { x: 108, z: -162, label: 'Follow the van' };
+    queueDialog('Rook', "Job one. A brown courier van runs the same route every day. Follow it. Do not crowd it, do not lose it.");
+    setMission('M1 The Tail — follow the brown van (stay 5–60m)');
+  } else if (i === 1) {
+    m.phase = 'getcar';
+    m.car = makeCar('sports', 0xd8b93a);
+    m.car.position.set(DROP_POINTS.m2car[0], 0, DROP_POINTS.m2car[1]);
+    G.scene.add(m.car); G.cars.push(m.car);
+    m.target = { x: DROP_POINTS.m2car[0], z: DROP_POINTS.m2car[1], label: 'Get the gold car' };
+    queueDialog('Rook', "Job two. A gold sports car is parked uptown. It belongs to a collector. Take it to Sunray Garage, and do not scratch it.");
+    setMission('M2 The Getaway Car — steal the gold car');
+  } else {
+    m.phase = 'cps';
+    G.wanted = 5;
+    m.cp = 0;
+    m.target = { x: DROP_POINTS.m3cps[0][0], z: DROP_POINTS.m3cps[0][1], label: 'Checkpoint 1' };
+    playStory('beforeM3');
+    queueDialog('Rook', "Job three. Three checkpoints, then the safehouse. The whole city is looking for you. Drive.");
+    setMission('M3 The Dragnet — hit 3 checkpoints, then the safehouse');
   }
-  // time to brief the next mission?
-  if (!m && G.missionIndex < 3 && G.state === 'playing' && !G.hud.dialogOpen) {
-    G.nextBriefIn -= dt;
-    if (G.nextBriefIn <= 0) startMission(G, G.missionIndex);
+  return true;
+}
+
+function failMission(reason) {
+  const m = G.mission;
+  if (m && m.van) { G.scene.remove(m.van); const ci = G.cars.indexOf(m.van); if (ci >= 0) G.cars.splice(ci, 1); }
+  if (m && m.car && m.idx === 1 && m.phase === 'getcar') { /* leave the gold car parked */ }
+  G.mission = null;
+  setMission(`Mission failed — ${reason}. Press N to retry.`);
+  showWasted('MISSION FAILED', reason);
+  G.over = true;
+}
+
+function completeMission() {
+  const m = G.mission;
+  const pay = MISSION_PAY[m.idx];
+  G.money += pay;
+  G.missionsDone[m.idx] = true;
+  if (m.van) { G.scene.remove(m.van); const ci = G.cars.indexOf(m.van); if (ci >= 0) G.cars.splice(ci, 1); }
+  G.mission = null;
+  G.wanted = 0;
+  showCard('MISSION PASSED', `${MISSION_NAMES[m.idx]}  •  +${fmtMoney(pay)}`);
+  setMission('');
+  if (m.idx === 0) playStory('afterM1');
+  if (m.idx === 1) playStory('afterM2');
+  if (m.idx === 2) playStory('epilogue');
+  G.missionIdx = Math.min(2, m.idx + 1);
+}
+
+function nearTarget(d) { return dist2(G.player.pos.x, G.player.pos.z, G.mission.target.x, G.mission.target.z) < d; }
+
+export function updateMissions(dt) {
+  const m = G.mission;
+  if (!m) {
+    if (!G.missionsDone.every(Boolean)) {
+      const next = G.missionsDone.findIndex(d => !d);
+      setMission(`Press N — start Mission ${next + 1}: ${MISSION_NAMES[next]} (${fmtMoney(MISSION_PAY[next])})`);
+    } else {
+      setMission('All jobs done. Porto Verde is yours, Mara.');
+    }
     return;
   }
-  if (!m || m.stage !== 'active') {
-    // tailing stage (Mission 1): drive the courier along his route to the market
-    if (m && m.stage === 'tail' && m.tailCar) {
-      const c = m.tailCar;
-      const p = G.player;
-      const pd = Math.hypot(p.pos.x - c.pos.x, p.pos.z - c.pos.z);
-      // too far: the courier waits for you; too close: he gets spooked and speeds up
-      // v4: cruise 13 (v3: 10) — the ~516-unit route took a full minute to tail
-      let cruise = 13;
-      if (pd > 60) cruise = 0;
-      else if (pd < 5) {
-        cruise = 18;
-        if (!m.spookShown) { m.spookShown = true; G.hud.toast('Too close — back off!'); }
-      } else m.spookShown = false;
-      const wp = m.tailRoute[m.tailWp];
-      const dx = wp[0] - c.pos.x, dz = wp[1] - c.pos.z;
-      const dist = Math.hypot(dx, dz);
-      if (dist < 8) {
-        m.tailWp++;
-        if (m.tailWp >= m.tailRoute.length) {
-          // courier arrived at the market: the package phase begins
-          c.speed = 0;
-          m.stage = 'active';
-          m.target = TARGETS[0].pickup; m.stage2 = TARGETS[0].deliver;
-          G.hud.setObjective(`${m.name}: ${TARGETS[0].pickup.label}`);
-          G.hud.toast('The courier stopped — grab the package');
-          moveBeacon(G);
-          return;
+  m.timer -= dt;
+  if (m.timer <= 0) { failMission('Out of time.'); return; }
+  const p = G.player;
+  if (m.idx === 0) {
+    if (m.phase === 'tail') {
+      // move the van along its route; wait if the player is far, hurry if crowded
+      const wp = VAN_ROUTE[m.vanWp];
+      const dx = wp[0] - m.van.position.x, dz = wp[1] - m.van.position.z;
+      const wd = Math.hypot(dx, dz);
+      if (wd < 6) m.vanWp = (m.vanWp + 1) % VAN_ROUTE.length;
+      const pd = dist2(p.pos.x, p.pos.z, m.van.position.x, m.van.position.z);
+      let vSpeed = 10;
+      if (pd > 60) vSpeed = 2; // waits for you
+      else if (pd < 5) vSpeed = 15; // speeds up when crowded
+      m.van.position.x += (dx / (wd || 1)) * vSpeed * dt;
+      m.van.position.z += (dz / (wd || 1)) * vSpeed * dt;
+      m.van.rotation.y = -Math.atan2(dz, dx);
+      m.van.userData.heading = Math.atan2(dz, dx);
+      m.target = { x: m.van.position.x, z: m.van.position.z, label: 'Follow the van' };
+      if (p.car && pd >= 5 && pd <= 60) {
+        m.tailTime += dt;
+        setMission(`M1 The Tail — stay on the van  ${Math.floor(m.tailTime)}/15s  (${Math.round(pd)}m)`);
+        if (m.tailTime >= 15) {
+          m.phase = 'pickup';
+          m.target = { x: DROP_POINTS.pickup[0], z: DROP_POINTS.pickup[1], label: 'Pick up the package' };
+          queueDialog('Rook', "Good. Now pick up the package at the market and drop it at the Marina.");
+          setMission('M1 The Tail — pick up the package');
         }
       } else {
-        const want = Math.atan2(dx, dz);
-        let d = want - c.angle;
-        while (d > Math.PI) d -= Math.PI * 2;
-        while (d < -Math.PI) d += Math.PI * 2;
-        c.angle += Math.max(-2 * dt, Math.min(2 * dt, d));
-        c.speed += Math.max(-14 * dt, Math.min(10 * dt, cruise - c.speed));
-        stepCar(G, c, dt, false);
+        setMission(`M1 The Tail — follow the van (stay 5–60m, ${Math.round(pd)}m)`);
       }
-      // beacon + objective track the moving courier
-      m.target = { x: c.pos.x, z: c.pos.z };
-      moveBeacon(G);
-    }
-    return;
-  }
-  // timer
-  if (m.timer > 0) {
-    m.timeLeft -= dt;
-    if (m.timeLeft <= 0) { failMission(G, 'Out of time — Rook does not pay for late work.'); return; }
-  }
-  const p = G.player;
-  const dist = (t) => Math.hypot(p.pos.x - t.x, p.pos.z - t.z);
-  if (m.index === 0) {
-    if (!m.packageGot) {
-      // v4: pickup radius 12 (v3: 5) — a player arriving in a car could stop 8 m
-      // away and never trigger it, so M1 could never complete
-      if (dist(m.target) < 12) {
-        G.hud.setObjective(`${m.name}: Package in hand — deliver it to the Harbor warehouse!`);
-        m.target = m.stage2; moveBeacon(G);
-        m.packageGot = true;
-        G.audio.pickup();
-        G.hud.toast('Package collected');
+    } else if (m.phase === 'pickup') {
+      if (nearTarget(10)) {
+        m.phase = 'deliver';
+        m.target = { x: DROP_POINTS.deliver[0], z: DROP_POINTS.deliver[1], label: 'Deliver the package' };
+        setMission('M1 The Tail — deliver the package');
       }
-    } else if (dist(m.target) < 12) {
-      completeMission(G, 'Delivered. Clean work, Mara.');
+    } else if (m.phase === 'deliver') {
+      if (nearTarget(10)) completeMission();
     }
-  } else if (m.index === 1) {
-    if (!m.packageGot) {
-      // stage 1 ends when the player is driving the mission car
-      if (p.car && p.car.missionCar) {
-        m.packageGot = true;
-        m.target = m.stage2; moveBeacon(G);
-        G.setWanted(2);
-        G.hud.setObjective(`${m.name}: The GT is yours — lose the police and reach the Marina lockup!`);
-        G.audio.pickup();
+  } else if (m.idx === 1) {
+    if (m.phase === 'getcar') {
+      if (p.car === m.car) {
+        m.phase = 'deliver';
+        G.wanted = Math.max(G.wanted, 2);
+        m.target = { x: DROP_POINTS.m2drop[0], z: DROP_POINTS.m2drop[1], label: 'Sunray Garage' };
+        setMission('M2 The Getaway Car — lose the heat, reach Sunray Garage');
       }
-    } else if (p.car && p.car.missionCar && dist(m.target) < 12) {
-      completeMission(G, 'The client is happy. The GT is in the lockup.');
+    } else if (m.phase === 'deliver') {
+      if (p.car === m.car && nearTarget(12)) completeMission();
+      else if (p.car !== m.car) setMission('M2 — get back in the gold car!');
     }
-  } else if (m.index === 2) {
-    if (dist(m.target) < 12) {
-      completeMission(G, 'You made it. The debt is paid — Porto Verde is yours now.');
-    }
-  }
-  // HUD timer readout
-  if (m.timer > 0) G.hud.setTimer(Math.ceil(m.timeLeft));
-  else G.hud.setTimer(0);
-}
-
-export function tryMissionInteract(G) {
-  const m = G.mission;
-  if (!m || m.stage !== 'active' || m.index !== 0 || m.packageGot) return false;
-  const p = G.player;
-  if (Math.hypot(p.pos.x - m.target.x, p.pos.z - m.target.z) < 12) {
-    // handled by updateMissions' proximity check; this is the E-press path
-    return true;
-  }
-  return false;
-}
-
-function completeMission(G, line) {
-  const m = G.mission;
-  G.money += m.reward;
-  G.setWanted(0);
-  G.beacon.visible = false;
-  G.hud.setObjective('');
-  G.hud.setTimer(0);
-  G.audio.success();
-  showPassed(G, m.name, m.reward, line);
-  G.hud.toast(`Job complete — +$${m.reward}`);
-  G.missionIndex++;
-  G.mission = null;
-  G.nextBriefIn = 6;
-  G.saveGame();
-  if (G.missionIndex >= 3) {
-    G.hud.showDialog('Rook — fixer', line + ' Three jobs, debt cleared. The city is open — drive it, Mara.', () => {});
-    // v5: the epilogue — Mara gets the last word
-    playStory(G, 'epilogue');
   } else {
-    G.hud.showDialog('Rook — fixer', line, () => {});
-    // v5: a story beat after each job — the debt, the collector, her answer
-    playStory(G, m.index === 0 ? 'afterM1' : 'afterM2');
+    if (m.phase === 'cps') {
+      const cp = DROP_POINTS.m3cps[m.cp];
+      // generous radius: two of the checkpoint spots sit inside buildings, so
+      // a car teleported/driven there gets pushed out by collision; the
+      // objective is to reach the area, not an exact point.
+      if (nearTarget(20)) {
+        m.cp++;
+        if (m.cp >= DROP_POINTS.m3cps.length) {
+          m.phase = 'safehouse';
+          m.target = { x: DROP_POINTS.safehouse[0], z: DROP_POINTS.safehouse[1], label: 'Safehouse' };
+          setMission('M3 The Dragnet — reach the safehouse');
+        } else {
+          m.target = { x: DROP_POINTS.m3cps[m.cp][0], z: DROP_POINTS.m3cps[m.cp][1], label: `Checkpoint ${m.cp + 1}` };
+          setMission(`M3 The Dragnet — checkpoint ${m.cp + 1}/3`);
+        }
+      }
+    } else if (m.phase === 'safehouse') {
+      if (nearTarget(16)) completeMission();
+    }
   }
-}
-
-export function failMission(G, reason) {
-  const m = G.mission;
-  G.beacon.visible = false;
-  G.hud.setTimer(0);
-  G.audio.fail();
-  G.mission = null;
-  G.nextBriefIn = 9999; // do not auto-brief; the retry flow restarts it
-  G.showOver('JOB FAILED', reason + ' The job is still open — take it again.', true);
 }

@@ -1,39 +1,39 @@
-// Saving: the player's progress lives in localStorage, nothing leaves the machine.
-// One clear job: save, load, and forget a Porto Verde run.
-const KEY = 'porto-verde-save-v1';
+// Porto Verde — save: localStorage (key porto-verde-save-v1). Persists money,
+// health, coins, best race time, missions done and the player's position.
+import { G, CFG } from './state.js';
 
-export function saveGame(G) {
+export function saveGame() {
   try {
-    const data = {
-      money: G.money,
-      missionIndex: G.missionIndex,
-      health: Math.round(G.player.health),
-      pos: { x: Math.round(G.player.pos.x), z: Math.round(G.player.pos.z) },
-      onFoot: G.player.onFoot,
-      time: Math.round(G.time),
-      savedAt: Date.now(),
-      // v5: side-activity progress
-      coins: G.coinsCollected ? [...G.coinsCollected] : [],
-      raceBest: G.raceBest ?? null,
-    };
-    localStorage.setItem(KEY, JSON.stringify(data));
-  } catch (e) { /* storage unavailable: the run just does not persist */ }
+    localStorage.setItem(CFG.SAVE_KEY, JSON.stringify({
+      money: G.money, health: G.health,
+      coinsGot: G.coinsGot, raceBest: G.raceBest,
+      missionsDone: G.missionsDone, missionIdx: G.missionIdx,
+      pos: { x: G.player.pos.x, z: G.player.pos.z },
+      dayT: G.dayT,
+    }));
+  } catch (e) { /* storage unavailable: the game still runs */ }
 }
 
-export function loadSave() {
+export function loadGame() {
   try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return null;
-    const d = JSON.parse(raw);
-    if (typeof d.money !== 'number' || typeof d.missionIndex !== 'number') return null;
-    return d;
+    const raw = localStorage.getItem(CFG.SAVE_KEY);
+    return raw ? JSON.parse(raw) : null;
   } catch (e) { return null; }
 }
 
-export function hasSave() {
-  return !!loadSave();
-}
-
-export function clearSave() {
-  try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
+export function applySave(s) {
+  if (!s) return;
+  G.money = s.money ?? CFG.MONEY_START;
+  G.health = s.health ?? CFG.HEALTH_MAX;
+  G.coinsGot = s.coinsGot || [];
+  G.raceBest = s.raceBest ?? null;
+  G.missionsDone = s.missionsDone || [false, false, false];
+  G.missionIdx = s.missionIdx || 0;
+  if (s.dayT !== undefined) G.dayT = s.dayT;
+  // restore collected coins
+  for (const idx of G.coinsGot) {
+    const coin = G.coins[idx];
+    if (coin) { coin.got = true; coin.mesh.visible = false; }
+  }
+  if (s.pos) G.savePos = s.pos;
 }
