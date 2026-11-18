@@ -1,264 +1,174 @@
-// Porto Verde — HUD: circular minimap with blips and a live-distance beacon,
-// compass, speedo, wanted stars, money/health, dialogs, cards, menu, full map.
-import * as THREE from 'three';
-import { G, CFG, ROADS, clamp, dist2, fmtClock, fmtMoney } from './state.js';
-
-let el = {};
-let mapBg = null; // pre-rendered city backdrop for the minimap
-let fullMapBg = null;
-let toastTimer = 0, cardTimer = 0;
-
-export function initHUD() {
-  el = {
-    hud: document.getElementById('hud'),
-    money: document.getElementById('money'),
-    health: document.getElementById('healthfill'),
-    stars: document.getElementById('stars'),
-    ammo: document.getElementById('ammo'),
-    speed: document.getElementById('speed'),
-    radio: document.getElementById('radio'),
-    coins: document.getElementById('coins'),
-    race: document.getElementById('race'),
-    district: document.getElementById('district'),
-    hint: document.getElementById('hint'),
-    interact: document.getElementById('interact'),
-    dialog: document.getElementById('dialog'),
-    dialogName: document.getElementById('dialog-name'),
-    dialogText: document.getElementById('dialog-text'),
-    toast: document.getElementById('toast'),
-    card: document.getElementById('card'),
-    cardTitle: document.getElementById('card-title'),
-    cardSub: document.getElementById('card-sub'),
-    wasted: document.getElementById('wasted'),
-    wastedTitle: document.getElementById('wasted-title'),
-    wastedSub: document.getElementById('wasted-sub'),
-    menu: document.getElementById('menu'),
-    menuTitle: document.getElementById('menu-title'),
-    map: document.getElementById('map'),
-    mapCanvas: document.getElementById('map-canvas'),
-    compass: document.getElementById('compass'),
-    mission: document.getElementById('mission'),
-    minimap: document.getElementById('minimap'),
-  };
-  buildMapBackgrounds();
-  document.getElementById('btn-new').addEventListener('click', () => window.PV.startGame(false));
-  document.getElementById('btn-continue').addEventListener('click', () => window.PV.startGame(true));
-}
-
-function buildMapBackgrounds() {
-  // minimap backdrop: 900 units -> 360 px, north up, city centred
-  mapBg = document.createElement('canvas'); mapBg.width = mapBg.height = 360;
-  const g = mapBg.getContext('2d');
-  const s = 360 / 900, ox = 180, oy = 180;
-  const X = (x) => ox + x * s, Z = (z) => oy + z * s;
-  g.fillStyle = '#20242a'; g.fillRect(0, 0, 360, 360);
-  g.fillStyle = '#5d7a4a';
-  g.fillRect(X(-87), Z(150), 110 * s, 90 * s); g.fillRect(X(-277), Z(-277), 100 * s, 100 * s);
-  g.fillStyle = '#9a938a'; g.fillRect(X(-60), Z(-60), 120 * s, 120 * s);
-  g.fillStyle = '#2e5d6b'; g.fillRect(X(450), Z(-450), 40 * s, 900 * s);
-  g.fillStyle = '#c9b48a'; g.fillRect(X(450), Z(-450), 10 * s, 900 * s);
-  g.strokeStyle = '#565b63'; g.lineWidth = 10 * s;
-  for (const r of ROADS) {
-    g.beginPath(); g.moveTo(X(-450), Z(r)); g.lineTo(X(450), Z(r)); g.stroke();
-    g.beginPath(); g.moveTo(X(r), Z(-450)); g.lineTo(X(r), Z(450)); g.stroke();
+// HUD: money/health/wanted/coins/speed/ammo/radio, circular minimap with
+// blips + live-distance beacon, compass, dialog box, mission card, WASTED.
+const PV_HUD = (() => {
+  const $ = (id) => document.getElementById(id);
+  let toastTimer = null;
+  function update() {
+    $('money').firstChild.textContent = '$' + Math.floor(G.money) + ' ';
+    $('health').textContent = 'Health ' + Math.max(0, Math.floor(G.health));
+    $('wanted').textContent = '★'.repeat(G.wanted) + '☆'.repeat(5 - G.wanted);
+    $('coins').textContent = '◉ Verde Coins ' + G.coinGot.length + '/12';
+    $('ammo').textContent = 'PISTOL ' + G.ammo + '/' + G.ammoMax;
+    $('radio').textContent = PV_Audio.name() + (G.muted ? ' (muted)' : '');
+    const p = G.player;
+    if (p && !p.onFoot && p.car) {
+      $('speed').innerHTML = Math.round(Math.abs(p.car.speed) * 3.6) + ' <small>km/h</small>';
+    } else {
+      $('speed').innerHTML = Math.round((p ? p.speed : 0) * 3.6) + ' <small>km/h</small>';
+    }
   }
-  g.fillStyle = '#3a3f47';
-  for (const b of G.buildings) g.fillRect(X(b.x - b.hx), Z(b.z - b.hz), b.hx * 2 * s, b.hz * 2 * s);
-  // full map: same drawing at 640px
-  fullMapBg = document.createElement('canvas'); fullMapBg.width = fullMapBg.height = 640;
-  const f = fullMapBg.getContext('2d');
-  const fs = 640 / 900, fox = 320, foy = 320;
-  const FX = (x) => fox + x * fs, FZ = (z) => foy + z * fs;
-  f.fillStyle = '#20242a'; f.fillRect(0, 0, 640, 640);
-  f.fillStyle = '#5d7a4a';
-  f.fillRect(FX(-87), FZ(150), 110 * fs, 90 * fs); f.fillRect(FX(-277), FZ(-277), 100 * fs, 100 * fs);
-  f.fillStyle = '#9a938a'; f.fillRect(FX(-60), FZ(-60), 120 * fs, 120 * fs);
-  f.fillStyle = '#2e5d6b'; f.fillRect(FX(450), FZ(-450), 40 * fs, 900 * fs);
-  f.strokeStyle = '#565b63'; f.lineWidth = 10 * fs;
-  for (const r of ROADS) {
-    f.beginPath(); f.moveTo(FX(-450), FZ(r)); f.lineTo(FX(450), FZ(r)); f.stroke();
-    f.beginPath(); f.moveTo(FX(r), FZ(-450)); f.lineTo(FX(r), FZ(450)); f.stroke();
+  function compass() {
+    const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    const idx = Math.round(((-G.yaw % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2) / (Math.PI / 4)) % 8;
+    $('compass').textContent = '◈ ' + dirs[idx] + '  ·  ' + (G.beaconTarget ? Math.round(dist2(G.player.x, G.player.z, G.beaconTarget.x, G.beaconTarget.z)) + 'm to target' : 'Porto Verde');
   }
-  f.fillStyle = '#3a3f47';
-  for (const b of G.buildings) f.fillRect(FX(b.x - b.hx), FZ(b.z - b.hz), b.hx * 2 * fs, b.hz * 2 * fs);
-  f.fillStyle = '#c9b48a'; f.font = 'bold 15px sans-serif';
-  f.fillText('OLD TOWN', FX(-300), FZ(300)); f.fillText('DOWNTOWN', FX(120), FZ(-200));
-  f.fillText('MARINA', FX(220), FZ(300)); f.fillText('NORTHSIDE', FX(-300), FZ(-300));
-  f.fillText('BEACH', FX(380), FZ(380));
-}
-
-export function showDialog(speaker, line) {
-  G.dialog = { speaker, line };
-  el.dialogName.textContent = speaker;
-  el.dialogText.textContent = line;
-  el.dialog.style.display = 'block';
-}
-export function closeDialog() {
-  G.dialog = null;
-  el.dialog.style.display = 'none';
-  const next = G.dialogQueue.shift();
-  if (next) showDialog(next.speaker, next.line);
-}
-export function queueDialog(speaker, line) {
-  if (!G.dialog) showDialog(speaker, line);
-  else G.dialogQueue.push({ speaker, line });
-}
-export function showToast(text) {
-  el.toast.textContent = text;
-  el.toast.style.display = 'block';
-  toastTimer = 4;
-}
-export function showCard(title, sub) {
-  el.cardTitle.textContent = title;
-  el.cardSub.textContent = sub || '';
-  el.card.style.display = 'block';
-  cardTimer = 3.5;
-}
-export function showWasted(title, sub) {
-  el.wastedTitle.textContent = title;
-  el.wastedSub.textContent = sub || '';
-  el.wasted.style.display = 'flex';
-}
-export function hideWasted() { el.wasted.style.display = 'none'; }
-export function showMenu(hasSave) {
-  el.menu.style.display = 'flex';
-  document.getElementById('btn-continue').style.display = hasSave ? 'block' : 'none';
-  el.menuTitle.textContent = 'PORTO VERDE';
-}
-export function hideMenu() { el.menu.style.display = 'none'; }
-export function setInteract(text) {
-  if (text) { el.interact.textContent = text; el.interact.style.display = 'block'; }
-  else el.interact.style.display = 'none';
-}
-export function setHint(text, secs) {
-  el.hint.textContent = text;
-  el.hint.style.display = 'block';
-  G.hintUntil = G.time + (secs || 15);
-}
-export function setMission(text) {
-  el.mission.textContent = text;
-  el.mission.style.display = text ? 'block' : 'none';
-}
-
-// Mission target for the beacon: {x, z, label} or null.
-export function missionTarget() {
-  if (G.mission) return G.mission.target;
-  if (G.race && G.race.active) return { x: G.race.next.x, z: G.race.next.z, label: 'Race' };
-  return null;
-}
-
-function drawMinimap() {
-  const c = el.minimap, g = c.getContext('2d');
-  const W = c.width, H = c.height, cx = W / 2, cy = H / 2;
-  const view = 280; // units across the minimap
-  const s = W / view;
-  const px = G.player.pos.x, pz = G.player.pos.z;
-  g.save();
-  g.beginPath(); g.arc(cx, cy, cx - 2, 0, Math.PI * 2); g.clip();
-  g.fillStyle = '#20242a'; g.fillRect(0, 0, W, H);
-  // backdrop window centred on the player: draw the 360px city map scaled so 1 unit = s px
-  g.drawImage(mapBg, cx - (px + 450) * (360 / 900) * s, cy - (pz + 450) * (360 / 900) * s, 360 * s, 360 * s);
-  // coins
-  g.fillStyle = '#ffd24a';
-  for (const coin of G.coins) {
-    if (coin.got) continue;
-    g.beginPath(); g.arc(cx + (coin.x - px) * s, cy + (coin.z - pz) * s, 3, 0, Math.PI * 2); g.fill();
+  function drawMinimap(canvas) {
+    const g = canvas.getContext('2d');
+    const W = canvas.width, C = W / 2, S = W / 900;
+    g.clearRect(0, 0, W, W);
+    g.save();
+    g.beginPath(); g.arc(C, C, C - 2, 0, Math.PI * 2); g.clip();
+    g.fillStyle = '#10151d'; g.fillRect(0, 0, W, W);
+    // zoomed local view: 280-unit window centred on the player
+    const p = G.player;
+    const px = p ? p.x : 0, pz = p ? p.z : 0;
+    const view = 280, sc = W / view;
+    const toX = (x) => C + (x - px) * sc, toZ = (z) => C + (z - pz) * sc;
+    // roads
+    g.strokeStyle = '#3f444b'; g.lineWidth = 10 * sc;
+    for (let k = 0; k <= 14; k++) {
+      const c = -448 + k * 64;
+      g.beginPath(); g.moveTo(toX(c), toZ(-448)); g.lineTo(toX(c), toZ(448)); g.stroke();
+      g.beginPath(); g.moveTo(toX(-448), toZ(c)); g.lineTo(toX(448), toZ(c)); g.stroke();
+    }
+    // parks
+    g.fillStyle = '#4a6b3f';
+    for (const [pi, pj] of [[6, 6], [7, 6], [6, 7], [7, 7], [2, 3], [3, 3]]) {
+      g.fillRect(toX(-416 + pi * 64) - 26 * sc, toZ(-416 + pj * 64) - 26 * sc, 52 * sc, 52 * sc);
+    }
+    // coins
+    g.fillStyle = '#ffd23e';
+    for (const c of G.coins) if (!c.got) { g.beginPath(); g.arc(toX(c.x), toZ(c.z), 3, 0, Math.PI * 2); g.fill(); }
+    // mission beacon
+    if (G.beaconTarget) {
+      const bx = toX(G.beaconTarget.x), bz = toZ(G.beaconTarget.z);
+      g.fillStyle = '#ffd23e';
+      g.beginPath(); g.arc(bx, bz, 6, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#fff'; g.font = 'bold 11px Verdana'; g.textAlign = 'center';
+      g.fillText(Math.round(dist2(px, pz, G.beaconTarget.x, G.beaconTarget.z)) + 'm', bx, bz - 10);
+      // edge arrow when off-screen
+      if (bx < 8 || bx > W - 8 || bz < 8 || bz > W - 8) {
+        const a = Math.atan2(bz - C, bx - C);
+        g.fillStyle = '#ffd23e';
+        g.beginPath();
+        g.moveTo(C + Math.cos(a) * (C - 12), C + Math.sin(a) * (C - 12));
+        g.lineTo(C + Math.cos(a + 2.6) * 14 + Math.cos(a) * (C - 12), C + Math.sin(a + 2.6) * 14 + Math.sin(a) * (C - 12));
+        g.lineTo(C + Math.cos(a - 2.6) * 14 + Math.cos(a) * (C - 12), C + Math.sin(a - 2.6) * 14 + Math.sin(a) * (C - 12));
+        g.fill();
+      }
+    }
+    // police blips
+    g.fillStyle = '#4a8aff';
+    for (const car of G.cars) {
+      if (car.driver === 'cop') { g.beginPath(); g.arc(toX(car.x), toZ(car.z), 3.5, 0, Math.PI * 2); g.fill(); }
+    }
+    // player car blip
+    if (p && p.car) {
+      g.fillStyle = '#9fe6a0';
+      g.beginPath(); g.arc(toX(p.car.x), toZ(p.car.z), 4, 0, Math.PI * 2); g.fill();
+    }
+    // player arrow (ringed)
+    g.save();
+    g.translate(C, C); g.rotate(Math.PI - (p ? p.heading : 0));
+    g.fillStyle = '#fff';
+    g.beginPath(); g.moveTo(0, -9); g.lineTo(6, 7); g.lineTo(-6, 7); g.closePath(); g.fill();
+    g.strokeStyle = '#ffd23e'; g.lineWidth = 2;
+    g.beginPath(); g.arc(0, 0, 12, 0, Math.PI * 2); g.stroke();
+    g.restore();
+    g.restore();
+    // compass ring ticks
+    g.fillStyle = '#eaf2ff'; g.font = '10px Verdana'; g.textAlign = 'center';
+    g.fillText('N', C, 12);
   }
-  // police blips
-  for (const car of G.police) {
-    g.fillStyle = '#4d8dff';
-    g.beginPath(); g.arc(cx + (car.position.x - px) * s, cy + (car.position.z - pz) * s, 4, 0, Math.PI * 2); g.fill();
+  function drawBigMap() {
+    const canvas = $('bigmapc');
+    const g = canvas.getContext('2d');
+    const W = 640, S = W / 900;
+    g.fillStyle = '#10151d'; g.fillRect(0, 0, W, W);
+    const toX = (x) => (x + 448) * S, toZ = (z) => (z + 448) * S;
+    g.strokeStyle = '#3f444b'; g.lineWidth = 8;
+    for (let k = 0; k <= 14; k++) {
+      const c = -448 + k * 64;
+      g.beginPath(); g.moveTo(toX(c), 0); g.lineTo(toX(c), W); g.stroke();
+      g.beginPath(); g.moveTo(0, toZ(c)); g.lineTo(W, toZ(c)); g.stroke();
+    }
+    g.fillStyle = '#4a6b3f';
+    for (const [pi, pj] of [[6, 6], [7, 6], [6, 7], [7, 7], [2, 3], [3, 3]]) {
+      g.fillRect(toX(-416 + pi * 64) - 26 * S, toZ(-416 + pj * 64) - 26 * S, 52 * S, 52 * S);
+    }
+    g.fillStyle = '#c9b285'; g.fillRect(toX(400), 0, 48 * S, W);
+    g.fillStyle = '#ffd23e';
+    for (const c of G.coins) if (!c.got) { g.beginPath(); g.arc(toX(c.x), toZ(c.z), 4, 0, Math.PI * 2); g.fill(); }
+    if (G.beaconTarget) {
+      g.fillStyle = '#ffd23e';
+      g.beginPath(); g.arc(toX(G.beaconTarget.x), toZ(G.beaconTarget.z), 8, 0, Math.PI * 2); g.fill();
+    }
+    const p = G.player;
+    if (p) {
+      g.fillStyle = '#fff';
+      g.beginPath(); g.arc(toX(p.x), toZ(p.z), 6, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = '#ffd23e'; g.lineWidth = 2;
+      g.beginPath(); g.arc(toX(p.x), toZ(p.z), 10, 0, Math.PI * 2); g.stroke();
+    }
+    g.fillStyle = '#eaf2ff'; g.font = '14px Verdana'; g.textAlign = 'left';
+    g.fillText('PORTO VERDE — Tab to close', 12, 24);
   }
-  // traffic blips
-  g.fillStyle = '#9aa0a8';
-  for (const car of G.traffic) {
-    g.fillRect(cx + (car.position.x - px) * s - 1.5, cy + (car.position.z - pz) * s - 1.5, 3, 3);
+  function showDialog(who, line) {
+    $('dialog').style.display = 'block';
+    $('dialog').querySelector('.who').textContent = who;
+    $('dialog').querySelector('.line').textContent = line;
   }
-  // mission beacon
-  const t = missionTarget();
-  if (t) {
-    const dx = t.x - px, dz = t.z - pz;
-    const d = Math.hypot(dx, dz);
-    const bx = cx + clamp(dx * s, -cx + 8, cx - 8);
-    const by = cy + clamp(dz * s, -cy + 8, cy - 8);
-    g.strokeStyle = '#ffd24a'; g.lineWidth = 2;
-    g.beginPath(); g.moveTo(cx, cy); g.lineTo(bx, by); g.stroke();
-    g.fillStyle = '#ffd24a';
-    g.save(); g.translate(bx, by); g.rotate(Math.atan2(dz, dx));
-    g.beginPath(); g.moveTo(8, 0); g.lineTo(-5, -5); g.lineTo(-5, 5); g.closePath(); g.fill(); g.restore();
-    g.font = 'bold 12px sans-serif'; g.textAlign = 'center';
-    g.fillText(`${Math.round(d)}m`, bx, by - 10);
-    g.fillText(`◈ ${Math.round(d)}m to target`, cx, H - 8);
+  function hideDialog() { $('dialog').style.display = 'none'; }
+  function nextDialog() {
+    if (G.dialog) return;
+    const d = G.dialogQueue.shift();
+    if (d) PV_Dialogue.showDialog(d.who, d.line);
   }
-  // player arrow (heading = player yaw)
-  const yaw = G.player.car ? G.player.car.userData.heading : G.player.yaw;
-  g.save(); g.translate(cx, cy); g.rotate(Math.atan2(Math.sin(yaw), Math.cos(yaw)) + Math.PI / 2);
-  // arrow points along heading: heading 0 = +x (east); canvas x right = east, y down = south
-  g.rotate(-Math.PI / 2);
-  g.fillStyle = '#ffffff';
-  g.beginPath(); g.moveTo(0, -9); g.lineTo(6, 7); g.lineTo(-6, 7); g.closePath(); g.fill();
-  g.strokeStyle = '#111'; g.lineWidth = 1.5; g.stroke();
-  g.restore();
-  g.restore();
-  // ring
-  g.strokeStyle = 'rgba(255,255,255,0.85)'; g.lineWidth = 3;
-  g.beginPath(); g.arc(cx, cy, cx - 2, 0, Math.PI * 2); g.stroke();
-}
-
-function drawFullMap() {
-  const c = el.mapCanvas, g = c.getContext('2d');
-  g.drawImage(fullMapBg, 0, 0);
-  const s = 640 / 900;
-  const px = G.player.pos.x, pz = G.player.pos.z;
-  const X = (x) => 320 + x * s, Z = (z) => 320 + z * s;
-  g.fillStyle = '#ffd24a';
-  for (const coin of G.coins) if (!coin.got) { g.beginPath(); g.arc(X(coin.x), Z(coin.z), 4, 0, Math.PI * 2); g.fill(); }
-  const t = missionTarget();
-  if (t) {
-    g.strokeStyle = '#ffd24a'; g.lineWidth = 2;
-    g.beginPath(); g.moveTo(X(px), Z(pz)); g.lineTo(X(t.x), Z(t.z)); g.stroke();
-    g.fillStyle = '#ffd24a';
-    g.beginPath(); g.moveTo(X(t.x), Z(t.z) - 10); g.lineTo(X(t.x) + 8, Z(t.z)); g.lineTo(X(t.x), Z(t.z) + 10); g.lineTo(X(t.x) - 8, Z(t.z)); g.closePath(); g.fill();
+  function toast(msg, ms) {
+    const el = $('toast');
+    el.textContent = msg; el.style.display = 'block';
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.style.display = 'none'; }, ms || 3500);
   }
-  g.fillStyle = '#fff';
-  g.beginPath(); g.arc(X(px), Z(pz), 7, 0, Math.PI * 2); g.fill();
-  g.strokeStyle = '#111'; g.lineWidth = 2; g.stroke();
-  g.fillStyle = '#ffd24a'; g.font = 'bold 13px sans-serif';
-  g.fillText('YOU', X(px) + 10, Z(pz) - 8);
-}
-
-export function updateHUD(dt) {
-  if (!G.started) return;
-  el.money.textContent = fmtMoney(G.money);
-  el.health.style.width = `${clamp(G.health, 0, 100)}%`;
-  el.stars.textContent = '★'.repeat(G.wanted) + '☆'.repeat(5 - G.wanted);
-  el.stars.style.color = G.wanted > 0 ? '#ff5040' : '#888';
-  el.ammo.textContent = G.player.car ? `—` : `PISTOL ${G.player.ammo}/${CFG.MAG}`;
-  const kmh = G.player.car ? Math.abs(G.player.car.userData.speed) * 3.6 : Math.hypot(G.player.vel.x, G.player.vel.z) * 3.6;
-  el.speed.textContent = `${Math.round(kmh)} km/h`;
-  el.radio.textContent = G.muted ? 'MUTED (M)' : ['♪ VERDE FM', '♪ BASSLINE 98', '♪ COAST 101'][G.station];
-  el.coins.textContent = `◉ Verde Coins ${G.coinsGot.length}/${CFG.COIN_COUNT}`;
-  el.coins.style.display = 'block';
-  if (G.race && G.race.active) {
-    el.race.textContent = `🏁 SUNSET SPRINT — CP ${G.race.cp}/${CFG.RACE_CP} — ${fmtClock(Math.max(0, G.race.left))}`;
-    el.race.style.display = 'block';
-  } else el.race.style.display = 'none';
-  el.district.textContent = G.interior ? G.interior.name : districtOf(G.player.pos.x, G.player.pos.z);
-  if (G.time > G.hintUntil) el.hint.style.display = 'none';
-  if (toastTimer > 0) { toastTimer -= dt; if (toastTimer <= 0) el.toast.style.display = 'none'; }
-  if (cardTimer > 0) { cardTimer -= dt; if (cardTimer <= 0) el.card.style.display = 'none'; }
-  // compass strip
-  const yaw = G.player.car ? G.player.car.userData.heading : G.player.yaw;
-  const deg = ((yaw * 180 / Math.PI) % 360 + 360) % 360;
-  const dirs = ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'];
-  el.compass.textContent = `${dirs[Math.round(deg / 45) % 8]}  ${Math.round(deg)}°`;
-  drawMinimap();
-  if (el.map.style.display === 'block') drawFullMap();
-}
-
-function districtOf(x, z) {
-  if (x < 0 && z >= 0) return 'Old Town';
-  if (x >= 0 && z < 0) return 'Downtown';
-  if (x >= 0 && z >= 0) return 'Marina';
-  return 'Northside';
-}
+  function mission(text) {
+    const el = $('mission');
+    if (!text) { el.style.display = 'none'; return; }
+    el.textContent = text; el.style.display = 'block';
+  }
+  function missionCard(title, sub) {
+    const el = $('mission');
+    el.innerHTML = '<b style="font-size:20px;color:#9fe6a0">' + title + '</b><br>' + sub;
+    el.style.display = 'block';
+    setTimeout(() => { if (!G.mission) el.style.display = 'none'; }, 4000);
+  }
+  function race(r) {
+    const el = $('race');
+    if (!r) { el.textContent = ''; return; }
+    el.textContent = '🏁 SUNSET SPRINT — CP ' + r.cp + '/5 — ' + fmtTime(r.t);
+  }
+  function showWasted(text) {
+    $('wasted').querySelector('div').textContent = text || 'WASTED';
+    $('wasted').style.display = 'flex';
+  }
+  function hideWasted() { $('wasted').style.display = 'none'; }
+  function hint(text, hold) {
+    $('hint').textContent = text;
+    G.hintT = hold || 15;
+  }
+  function interact(text) {
+    const el = $('interact');
+    if (!text) { el.style.display = 'none'; return; }
+    el.textContent = text; el.style.display = 'block';
+  }
+  return { update, compass, drawMinimap, drawBigMap, showDialog, hideDialog, nextDialog, toast, mission, missionCard, race, showWasted, hideWasted, hint, interact };
+})();

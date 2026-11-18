@@ -1,69 +1,58 @@
-// Porto Verde — living world: street events every 45–75s (a fender-bender or
-// a police stop), lasting ~40s, then clearing. If you steal an event car it
-// is not restored.
-import * as THREE from 'three';
-import { G, rand, pick, clamp, dist2 } from './state.js';
-import { makeCar } from './vehicles.js';
-import { makePed } from './peds.js';
-
-export function updateEvents(dt) {
-  G.eventTimer -= dt;
-  if (G.eventTimer <= 0) {
-    spawnEvent();
-    G.eventTimer = rand(45, 75);
-  }
-  for (let i = G.events.length - 1; i >= 0; i--) {
-    const ev = G.events[i];
-    ev.left -= dt;
-    if (ev.left <= 0) {
-      // clear: remove the event's cars/peds unless the player took a car
-      for (const car of ev.cars) {
-        if (G.player.car === car) continue; // stolen: not restored
-        G.scene.remove(car);
-        const ci = G.cars.indexOf(car); if (ci >= 0) G.cars.splice(ci, 1);
-      }
-      for (const ped of ev.peds) {
-        G.scene.remove(ped);
-        const pi = G.peds.indexOf(ped); if (pi >= 0) G.peds.splice(pi, 1);
-      }
-      G.events.splice(i, 1);
+// Living world: street events every 45-75s (fender-bender or police stop).
+const PV_Events = (() => {
+  function spawnEvent() {
+    const kind = Math.random() < 0.6 ? 'fender' : 'stop';
+    // pick a road spot
+    const k = randi(0, 14), along = rand(-380, 380);
+    const horiz = Math.random() < 0.5;
+    const c = -448 + k * 64;
+    const x = horiz ? along : c, z = horiz ? c : along;
+    const heading = horiz ? (Math.random() < 0.5 ? 0 : Math.PI) : (Math.random() < 0.5 ? Math.PI / 2 : -Math.PI / 2);
+    const cars = [];
+    if (kind === 'fender') {
+      const c1 = PV_Vehicles.makeCar('sedan', x, z, heading, 0x8a3a3a);
+      const c2 = PV_Vehicles.makeCar('suv', x + Math.sin(heading) * 5, z + Math.cos(heading) * 5, heading + 0.5, 0x3a5a8a);
+      c1.driver = 'event'; c2.driver = 'event';
+      cars.push(c1, c2);
+    } else {
+      const c1 = PV_Vehicles.makeCar('sedan', x, z, heading, 0x2e2e2e);
+      c1.driver = 'event'; cars.push(c1);
     }
+    for (const c of cars) G.cars.push(c);
+    // a driver ped standing by
+    const ped = PV_Traffic.makePed(x + 3, z + 2, { state: 'stand' });
+    ped.eventPed = true; ped.standT = 45;
+    G.event = { kind, cars, ped, t: 40, cleared: false };
+    PV_HUD.toast(kind === 'fender' ? 'Street event: fender-bender ahead' : 'Street event: police stop ahead');
   }
-}
-
-function spawnEvent() {
-  const kind = rand() < 0.6 ? 'fender' : 'stop';
-  const p = G.player;
-  // a spot on a road near the player: pick an axis, put the event on a road line
-  const roads = [-390, -325, -260, -195, -130, -65, 0, 65, 130, 195, 260, 325, 390];
-  const road = pick(roads);
-  const along = clamp((Math.random() < 0.5 ? p.pos.x : p.pos.z) + rand(-80, 80), -400, 400);
-  const onX = Math.random() < 0.5;
-  const cx = onX ? along : road;
-  const cz = onX ? road : along;
-  const ev = { kind, left: 40, cars: [], peds: [] };
-  if (kind === 'fender') {
-    const c1 = makeCar('sedan', 0x7a2e2e);
-    c1.position.set(cx, 0, cz); c1.rotation.y = rand(0, Math.PI * 2);
-    const c2 = makeCar('suv', 0x2e4a7a);
-    c2.position.set(cx + 3.5, 0, cz + 1.5); c2.rotation.y = c1.rotation.y + 0.4;
-    G.scene.add(c1); G.scene.add(c2);
-    ev.cars.push(c1, c2); G.cars.push(c1, c2);
-    const driver = makePed('Ruben', { kind: 'event', speed: 0 });
-    driver.position.set(cx + 1.5, 0, cz + 3);
-    driver.userData.state = 'stand';
-    G.scene.add(driver); ev.peds.push(driver); G.peds.push(driver);
-  } else {
-    const pc = makeCar('police', 0x1c1c22);
-    pc.position.set(cx, 0, cz); pc.rotation.y = rand(0, Math.PI * 2);
-    const c2 = makeCar('sedan', 0x9a9a9a);
-    c2.position.set(cx + 4, 0, cz + 2); c2.rotation.y = pc.rotation.y + 0.3;
-    G.scene.add(pc); G.scene.add(c2);
-    ev.cars.push(pc, c2); G.cars.push(pc, c2);
-    const officer = makePed('Officer', { kind: 'event', shirt: 0x1c1c22, speed: 0 });
-    officer.position.set(cx + 2, 0, cz + 3);
-    officer.userData.state = 'stand';
-    G.scene.add(officer); ev.peds.push(officer); G.peds.push(officer);
+  function clearEvent() {
+    const e = G.event;
+    if (!e) return;
+    e.cleared = true;
+    for (const c of e.cars) {
+      // if the player stole an event car, it is not restored
+      if (c.driver === 'player') continue;
+      const i = G.cars.indexOf(c);
+      if (i >= 0) G.cars.splice(i, 1);
+      G.scene.remove(c.mesh);
+    }
+    if (e.ped) {
+      const i = G.peds.indexOf(e.ped);
+      if (i >= 0) G.peds.splice(i, 1);
+      G.scene.remove(e.ped.mesh);
+    }
+    G.event = null;
+    G.eventT = rand(45, 75);
   }
-  G.events.push(ev);
-}
+  function update(dt) {
+    if (G.event) {
+      G.event.t -= dt;
+      if (G.event.t <= 0) clearEvent();
+      return;
+    }
+    if (!G.started || G.over) return;
+    G.eventT -= dt;
+    if (G.eventT <= 0) spawnEvent();
+  }
+  return { update, spawnEvent, clearEvent };
+})();

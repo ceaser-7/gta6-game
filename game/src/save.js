@@ -1,39 +1,37 @@
-// Porto Verde — save: localStorage (key porto-verde-save-v1). Persists money,
-// health, coins, best race time, missions done and the player's position.
-import { G, CFG } from './state.js';
-
-export function saveGame() {
-  try {
-    localStorage.setItem(CFG.SAVE_KEY, JSON.stringify({
-      money: G.money, health: G.health,
-      coinsGot: G.coinsGot, raceBest: G.raceBest,
-      missionsDone: G.missionsDone, missionIdx: G.missionIdx,
-      pos: { x: G.player.pos.x, z: G.player.pos.z },
-      dayT: G.dayT,
-    }));
-  } catch (e) { /* storage unavailable: the game still runs */ }
-}
-
-export function loadGame() {
-  try {
-    const raw = localStorage.getItem(CFG.SAVE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch (e) { return null; }
-}
-
-export function applySave(s) {
-  if (!s) return;
-  G.money = s.money ?? CFG.MONEY_START;
-  G.health = s.health ?? CFG.HEALTH_MAX;
-  G.coinsGot = s.coinsGot || [];
-  G.raceBest = s.raceBest ?? null;
-  G.missionsDone = s.missionsDone || [false, false, false];
-  G.missionIdx = s.missionIdx || 0;
-  if (s.dayT !== undefined) G.dayT = s.dayT;
-  // restore collected coins
-  for (const idx of G.coinsGot) {
-    const coin = G.coins[idx];
-    if (coin) { coin.got = true; coin.mesh.visible = false; }
+// Save: localStorage key porto-verde-save-v1.
+const PV_Save = (() => {
+  const KEY = 'porto-verde-save-v1';
+  function save() {
+    try {
+      const p = G.player;
+      localStorage.setItem(KEY, JSON.stringify({
+        money: G.money, health: G.health,
+        coinsGot: G.coinGot.slice(), raceBest: G.raceBest,
+        missionsDone: G.missionsDone.slice(),
+        x: p ? p.x : G.spawn.x, z: p ? p.z : G.spawn.z,
+      }));
+    } catch (e) {}
   }
-  if (s.pos) G.savePos = s.pos;
-}
+  function load() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch (e) { return null; }
+  }
+  function has() { return !!load(); }
+  function apply(s) {
+    if (!s) return;
+    G.money = s.money ?? 200;
+    G.health = s.health ?? 100;
+    G.coinGot = (s.coinsGot ?? []).slice();
+    G.raceBest = s.raceBest ?? null;
+    G.missionsDone = (s.missionsDone ?? [false, false, false]).slice();
+    for (const c of G.coins) c.got = G.coinGot.includes(c.idx);
+    for (const c of G.coins) c.mesh.visible = !c.got;
+    if (s.x !== undefined && Math.abs(s.x) < 440 && Math.abs(s.z) < 440) {
+      G.spawn = { x: s.x, z: s.z };
+    }
+  }
+  return { save, load, has, apply };
+})();

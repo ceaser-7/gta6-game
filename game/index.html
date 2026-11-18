@@ -2,89 +2,91 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<title>Porto Verde — an open-world crime game</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="data:,">
-<title>Porto Verde — an open-world crime game</title>
 <style>
-  html, body { margin: 0; padding: 0; overflow: hidden; background: #111; font-family: 'Segoe UI', Arial, sans-serif; }
-  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
-  .panel { position: fixed; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.8); z-index: 5; }
-  #hud { inset: 0; pointer-events: none; }
-  #money { top: 14px; right: 18px; font-size: 26px; font-weight: 700; color: #7dffb0; }
-  #district { top: 46px; right: 18px; font-size: 15px; color: #ddd; }
-  #stars { top: 14px; left: 18px; font-size: 26px; letter-spacing: 3px; }
-  #healthbar { top: 52px; left: 18px; width: 180px; height: 12px; background: rgba(0,0,0,.55); border: 1px solid #fff; border-radius: 6px; }
-  #healthfill { height: 100%; width: 100%; background: #4ecdc4; border-radius: 5px; }
-  #ammo { bottom: 96px; right: 18px; font-size: 18px; font-weight: 700; }
-  #speed { bottom: 64px; right: 18px; font-size: 30px; font-weight: 700; }
-  #radio { bottom: 36px; right: 18px; font-size: 15px; color: #ffd24a; }
-  #coins { bottom: 36px; left: 18px; font-size: 16px; color: #ffd24a; display: none; }
-  #race { bottom: 64px; left: 18px; font-size: 17px; font-weight: 700; color: #4ecdc4; display: none; }
-  #mission { top: 92px; left: 18px; font-size: 16px; color: #ffd24a; max-width: 420px; display: none; }
-  #compass { top: 14px; left: 50%; transform: translateX(-50%); font-size: 16px; letter-spacing: 2px; color: #eee; }
-  #hint { bottom: 130px; left: 50%; transform: translateX(-50%); font-size: 15px; color: #eee; background: rgba(0,0,0,.5); padding: 6px 14px; border-radius: 6px; display: none; white-space: nowrap; }
-  #interact { bottom: 170px; left: 50%; transform: translateX(-50%); font-size: 18px; font-weight: 700; color: #fff; background: rgba(0,0,0,.6); padding: 8px 16px; border-radius: 6px; display: none; white-space: nowrap; }
-  #minimap { position: fixed; right: 18px; bottom: 130px; width: 190px; height: 190px; border-radius: 50%; border: 3px solid rgba(255,255,255,.85); background: #20242a; z-index: 5; }
-  #dialog { position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%); width: 560px; max-width: 90vw; background: rgba(10,12,16,.88); border: 1px solid #ffd24a; border-radius: 8px; padding: 14px 18px; color: #fff; z-index: 8; display: none; }
-  #dialog-name { color: #ffd24a; font-weight: 700; font-size: 17px; margin-bottom: 4px; }
-  #dialog-text { font-size: 17px; line-height: 1.45; }
-  #dialog .key { margin-top: 8px; font-size: 12px; color: #aaa; }
-  #toast { position: fixed; top: 130px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.65); color: #fff; padding: 8px 16px; border-radius: 6px; font-size: 15px; z-index: 8; display: none; max-width: 80vw; text-align: center; }
-  #card { position: fixed; top: 34%; left: 50%; transform: translate(-50%,-50%); text-align: center; z-index: 9; display: none; }
-  #card-title { font-size: 44px; font-weight: 900; color: #ffd24a; text-shadow: 0 2px 12px rgba(0,0,0,.9); letter-spacing: 2px; }
-  #card-sub { font-size: 20px; color: #fff; text-shadow: 0 1px 6px rgba(0,0,0,.9); margin-top: 6px; }
-  #wasted { position: fixed; inset: 0; background: rgba(0,0,0,.72); display: none; align-items: center; justify-content: center; flex-direction: column; z-index: 20; cursor: pointer; }
-  #wasted-title { font-size: 84px; font-weight: 900; color: #e8e8e8; letter-spacing: 6px; text-shadow: 0 4px 24px rgba(0,0,0,1); }
-  #wasted-sub { font-size: 20px; color: #ccc; margin-top: 10px; }
-  #wasted .key { margin-top: 26px; font-size: 15px; color: #999; }
-  #menu { position: fixed; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.55), rgba(0,0,0,.25) 40%, rgba(0,0,0,.65)); display: flex; align-items: center; justify-content: center; flex-direction: column; z-index: 15; color: #fff; text-align: center; }
-  #menu-title { font-size: 72px; font-weight: 900; letter-spacing: 8px; color: #ffd24a; text-shadow: 0 4px 24px rgba(0,0,0,.9); }
-  #menu-sub { font-size: 20px; color: #eee; margin: 8px 0 26px; text-shadow: 0 2px 8px rgba(0,0,0,.9); }
-  #menu button { display: block; margin: 8px auto; padding: 13px 42px; font-size: 19px; font-weight: 700; border: none; border-radius: 8px; cursor: pointer; background: #ffd24a; color: #111; min-width: 300px; }
-  #menu button:hover { background: #ffe08a; }
-  #menu .controls { margin-top: 24px; font-size: 14px; line-height: 1.7; color: #ddd; text-shadow: 0 1px 4px rgba(0,0,0,.9); }
-  #map { position: fixed; inset: 0; background: rgba(0,0,0,.82); display: none; align-items: center; justify-content: center; flex-direction: column; z-index: 12; }
-  #map-canvas { width: 640px; height: 640px; max-width: 92vw; max-height: 82vh; border: 2px solid #fff; border-radius: 8px; }
-  #map .key { margin-top: 12px; color: #ccc; font-size: 15px; }
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#0b0e14;font-family:Verdana,Arial,sans-serif;color:#fff}
+  #c{position:fixed;inset:0;display:block}
+  .hud{position:fixed;pointer-events:none;z-index:5;text-shadow:0 1px 2px #000}
+  #map{left:14px;bottom:14px;width:170px;height:170px;border-radius:50%;border:3px solid rgba(255,255,255,.75);background:#10151d}
+  #money{left:14px;top:14px;font-size:22px;font-weight:bold}
+  #money small{font-size:13px;color:#9fe6a0}
+  #health{left:14px;top:44px;font-size:14px}
+  #wanted{left:14px;top:66px;font-size:20px;letter-spacing:2px;color:#ffd23e}
+  #speed{right:16px;bottom:16px;font-size:34px;font-weight:bold;text-align:right}
+  #speed small{font-size:13px;color:#cfe3ff}
+  #ammo{right:16px;bottom:64px;font-size:16px;text-align:right}
+  #radio{right:16px;top:14px;font-size:14px;text-align:right;color:#ffd9a0}
+  #compass{left:50%;top:10px;transform:translateX(-50%);font-size:15px;letter-spacing:4px;color:#eaf2ff;white-space:nowrap}
+  #coins{left:14px;top:96px;font-size:15px;color:#ffe27a}
+  #race{left:50%;top:44px;transform:translateX(-50%);font-size:18px;font-weight:bold;color:#ffe27a;text-align:center}
+  #hint{left:50%;bottom:96px;transform:translateX(-50%);font-size:15px;color:#eaf2ff;text-align:center}
+  #interact{left:50%;bottom:150px;transform:translateX(-50%);font-size:17px;background:rgba(0,0,0,.55);padding:6px 14px;border-radius:6px;display:none}
+  #mission{left:50%;top:84px;transform:translateX(-50%);font-size:15px;background:rgba(0,0,0,.55);padding:8px 14px;border-radius:6px;text-align:center;display:none;max-width:520px}
+  #toast{left:50%;top:130px;transform:translateX(-50%);font-size:15px;background:rgba(0,0,0,.6);padding:6px 14px;border-radius:6px;display:none}
+  #dialog{left:50%;bottom:210px;transform:translateX(-50%);width:560px;max-width:86vw;background:rgba(8,10,16,.88);border:1px solid #8a93a6;border-radius:8px;padding:12px 16px;display:none;z-index:6}
+  #dialog .who{font-weight:bold;color:#ffd23e;margin-bottom:4px}
+  #dialog .line{font-size:16px;line-height:1.45}
+  #dialog .key{font-size:12px;color:#9fb0c8;margin-top:8px}
+  #menu{position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(180deg,rgba(5,8,14,.25),rgba(5,8,14,.78));text-align:center}
+  #menu h1{font-size:64px;margin:0;letter-spacing:6px;color:#ffe27a;text-shadow:0 4px 18px #000}
+  #menu h2{font-size:18px;margin:6px 0 18px;color:#eaf2ff;font-weight:normal}
+  #menu .sub{font-size:14px;color:#cfe3ff;max-width:640px;line-height:1.6}
+  #menu button{pointer-events:auto;margin-top:22px;font-size:20px;padding:12px 34px;border-radius:8px;border:0;background:#e8a33d;color:#14100a;font-weight:bold;cursor:pointer}
+  #menu button:hover{background:#ffc95e}
+  #menu .keys{margin-top:18px;font-size:13px;color:#b9c6da;line-height:1.7}
+  #wasted{position:fixed;inset:0;z-index:9;display:none;align-items:center;justify-content:center;background:rgba(20,0,0,.55)}
+  #wasted div{font-size:72px;letter-spacing:10px;color:#ff5a4e;text-shadow:0 4px 24px #000}
+  #bigmap{position:fixed;inset:0;z-index:8;display:none;background:rgba(5,8,14,.92);align-items:center;justify-content:center}
+  #bigmap canvas{border:2px solid #8a93a6;border-radius:8px}
+  #fade{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;z-index:7;transition:opacity .5s}
 </style>
 </head>
 <body>
-<canvas id="game"></canvas>
-<div id="hud">
-  <div class="panel" id="stars">☆☆☆☆☆</div>
-  <div class="panel" id="healthbar"><div id="healthfill"></div></div>
-  <div class="panel" id="money">$200</div>
-  <div class="panel" id="district">Old Town</div>
-  <div class="panel" id="compass">N 0°</div>
-  <div class="panel" id="mission"></div>
-  <div class="panel" id="ammo">PISTOL 12/12</div>
-  <div class="panel" id="speed">0 km/h</div>
-  <div class="panel" id="radio">♪ VERDE FM</div>
-  <div class="panel" id="coins">◉ Verde Coins 0/12</div>
-  <div class="panel" id="race"></div>
-  <div class="panel" id="hint"></div>
-  <div class="panel" id="interact"></div>
-  <canvas id="minimap" width="190" height="190"></canvas>
-</div>
-<div id="dialog"><div id="dialog-name"></div><div id="dialog-text"></div><div class="key">ENTER — continue</div></div>
-<div id="toast"></div>
-<div id="card"><div id="card-title"></div><div id="card-sub"></div></div>
-<div id="wasted"><div id="wasted-title">WASTED</div><div id="wasted-sub"></div><div class="key">Click to get back up</div></div>
+<canvas id="c"></canvas>
+<div id="fade"></div>
+<canvas id="map" class="hud" width="170" height="170"></canvas>
+<div id="money" class="hud">$200 <small>PORTO VERDE</small></div>
+<div id="health" class="hud">Health 100</div>
+<div id="wanted" class="hud"></div>
+<div id="coins" class="hud">◉ Verde Coins 0/12</div>
+<div id="speed" class="hud">0 <small>km/h</small></div>
+<div id="ammo" class="hud">PISTOL 12/12</div>
+<div id="radio" class="hud">VERDE FM</div>
+<div id="compass" class="hud">N</div>
+<div id="race" class="hud"></div>
+<div id="hint" class="hud"></div>
+<div id="interact" class="hud"></div>
+<div id="mission" class="hud"></div>
+<div id="toast" class="hud"></div>
+<div id="dialog" class="hud"><div class="who"></div><div class="line"></div><div class="key">ENTER — continue</div></div>
+<div id="wasted"><div>WASTED</div></div>
+<div id="bigmap"><canvas id="bigmapc" width="640" height="640"></canvas></div>
 <div id="menu">
-  <div id="menu-title">PORTO VERDE</div>
-  <div id="menu-sub">An open-world crime game. Mara Voss owes Rook $40,000 — and the city is hers to drive.</div>
-  <button id="btn-new">NEW GAME</button>
-  <button id="btn-continue">CONTINUE</button>
-  <div class="controls">
-    WASD move &nbsp;•&nbsp; Shift run &nbsp;•&nbsp; Mouse look &nbsp;•&nbsp; E enter car / talk / enter shops<br>
-    F punch &nbsp;•&nbsp; Click shoot &nbsp;•&nbsp; R reload &nbsp;•&nbsp; H horn &nbsp;•&nbsp; Q radio &nbsp;•&nbsp; M mute<br>
-    Tab full map &nbsp;•&nbsp; N start mission &nbsp;•&nbsp; Find 12 Verde Coins &nbsp;•&nbsp; Race at the Sunset Sprint arch
-  </div>
+  <h1>PORTO VERDE</h1>
+  <h2>An open-world crime game — Mara Voss owes Rook $40,000. Three jobs to pay it off.</h2>
+  <div class="sub">Drive and walk a living city: talk to people, hunt 12 Verde Coins, race the Sunset Sprint, eat at El Faro, fix the project car at Sunray Garage — and stay ahead of the police.</div>
+  <button id="play">PLAY</button>
+  <div class="keys">WASD move &nbsp;·&nbsp; Shift run &nbsp;·&nbsp; Mouse look &nbsp;·&nbsp; E enter car / talk / enter shops &nbsp;·&nbsp; F punch &nbsp;·&nbsp; R reload &nbsp;·&nbsp; H horn &nbsp;·&nbsp; Q radio &nbsp;·&nbsp; Tab city map &nbsp;·&nbsp; M mute &nbsp;·&nbsp; 1/2/3 start a mission</div>
 </div>
-<div id="map"><canvas id="map-canvas" width="640" height="640"></canvas><div class="key">Tab — close the map</div></div>
-<script type="importmap">
-{ "imports": { "three": "./vendor/three.module.min.js" } }
-</script>
-<script type="module" src="./src/main.js"></script>
+<script src="vendor/three.min.js"></script>
+<script src="src/util.js"></script>
+<script src="src/audio.js"></script>
+<script src="src/city.js"></script>
+<script src="src/vehicles.js"></script>
+<script src="src/traffic.js"></script>
+<script src="src/dialogue.js"></script>
+<script src="src/story.js"></script>
+<script src="src/interiors.js"></script>
+<script src="src/activities.js"></script>
+<script src="src/events.js"></script>
+<script src="src/missions.js"></script>
+<script src="src/police.js"></script>
+<script src="src/player.js"></script>
+<script src="src/hud.js"></script>
+<script src="src/save.js"></script>
+<script src="src/shots.js"></script>
+<script src="src/main.js"></script>
 </body>
 </html>
