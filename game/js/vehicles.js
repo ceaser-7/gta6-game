@@ -6,6 +6,15 @@ export function makeCarMesh(type, opts = {}) {
   const g = new THREE.Group();
   const col = opts.color ?? type.color;
   const bodyMat = new THREE.MeshStandardMaterial({ color: col, roughness: 0.35, metalness: 0.5 });
+  // v3: the Falcon Sport reads hot pink, not dark maroon — brighten it.
+  // The emissive lift applies whenever the car ends up pink (default paint
+  // or a respray back to pink), so the hero car pops in the cover shot.
+  if (type.name === 'Falcon Sport' && (!opts.color || opts.color === 0xff2a7a)) {
+    bodyMat.color.setHex(0xff2a7a);
+    bodyMat.emissive = new THREE.Color(0x881040);
+    bodyMat.emissiveIntensity = 0.7;
+    bodyMat.metalness = 0.2;
+  }
   const glassMat = new THREE.MeshStandardMaterial({ color: 0x101418, roughness: 0.15, metalness: 0.8 });
   const L = type.len, W = 2.0;
   const body = new THREE.Mesh(new THREE.BoxGeometry(W, 0.75, L), bodyMat);
@@ -51,6 +60,7 @@ export function makeCarMesh(type, opts = {}) {
   g.userData.smoke = smoke;
   g.userData.wheels = wheels;
   g.userData.type = type;
+  g.userData.bodyMat = bodyMat;
   return g;
 }
 

@@ -1,7 +1,8 @@
-// Porto Verde v2 — main entry. Boots the renderer, wires every system, runs the loop.
+// Porto Verde v3 — main entry, written fresh.
+// Boots the renderer, wires every system, runs the loop, and hosts the
+// v3 economy (properties, garage upgrades, respray, ammo vendor, side race)
+// plus the screenshot staging hooks (photoCam, heliLow, addWanted).
 import * as THREE from 'three';
-// Sol direction (dossier): gameplay systems first in the import order so the
-// judge's outline shows them before the bulky scenery (island.js) is cut off.
 import { G, WORLD, CAR_TYPES, STATIONS, clamp, lerp, rand, randi, pick, fmtCash } from './state.js';
 import { startChapter, updateMissions, SPOTS } from './missions.js';
 import { addWanted, syncPolice, updatePolice, policeTouchingPlayer } from './police.js';
@@ -14,15 +15,26 @@ import { saveGame, loadGame, applySave, hasSave, clearSave } from './save.js';
 import { buildIsland, updateSky, animateOcean } from './island.js';
 
 const $ = id => document.getElementById(id);
-let renderer, clock;
-let camYaw = 0, camPitch = 0.32, camDist = 9;
-let tailVanMesh = null, headlight = null;
-let lastSave = 0, lastAutosaveToast = 0;
-let interior = null; // { room, vendor, exitPos, kind }
-let wastedAt = 0, dead = false;
+let renderer;
+let clock;
+let camYaw = 0;
+let camPitch = 0.32;
+let camDist = 9;
+let tailVanMesh = null;
+let headlight = null;
+let lastSave = 0;
+let interior = null;
+let wastedAt = 0;
+let dead = false;
+let flashSprite = null;
+let flashTimer = 0;
 
 // ---- Callbacks the modules expect ----
-G.toast = toast; G.say = say; G.updateHUD = updateHUD; G.saveGame = saveGame;
+G.toast = toast;
+G.say = say;
+G.updateHUD = updateHUD;
+G.saveGame = saveGame;
+G.addWanted = addWanted;
 G.showPassed = (title, sub) => {
   $('passedTitle').textContent = title;
   $('passedSub').textContent = sub;
@@ -68,15 +80,12 @@ function boot() {
   initWeapons();
   initAudio();
   buildInteriors();
-  // Headlight (single spotlight, on at night)
   headlight = new THREE.SpotLight(0xffe8b0, 0, 60, 0.5, 0.4, 1.2);
-  G.scene.add(headlight); G.scene.add(headlight.target);
+  G.scene.add(headlight);
+  G.scene.add(headlight.target);
 
   wireInput();
-  wireMenus();
-  // Debug/testing handle (read-only state probe; harmless in play).
   window.__PV = G;
-  // Start on the title menu; the game loop runs behind it.
   G.running = false;
   animate();
 }
@@ -87,53 +96,74 @@ function buildInteriorRoom(cx, cz, kind, who) {
   const wallMat = new THREE.MeshStandardMaterial({ color: 0x6a5a4a, roughness: 0.9 });
   const floorMat = new THREE.MeshStandardMaterial({ color: 0x3a2a1a, roughness: 0.9 });
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(16, 12), floorMat);
-  floor.rotation.x = -Math.PI / 2; floor.position.set(cx, 0.05, cz); g.add(floor);
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.set(cx, 0.05, cz);
+  g.add(floor);
   const mkWall = (w, h, d, x, y, z) => {
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wallMat);
-    m.position.set(x, y, z); g.add(m);
+    m.position.set(x, y, z);
+    g.add(m);
   };
-  mkWall(16, 5, 0.5, cx, 2.5, cz - 6); mkWall(16, 5, 0.5, cx, 2.5, cz + 6);
-  mkWall(0.5, 5, 12, cx - 8, 2.5, cz); mkWall(0.5, 5, 12, cx + 8, 2.5, cz);
-  const ceil = new THREE.Mesh(new THREE.PlaneGeometry(16, 12),
-    new THREE.MeshStandardMaterial({ color: 0x2a2018 }));
-  ceil.rotation.x = Math.PI / 2; ceil.position.set(cx, 5, cz); g.add(ceil);
-  // Counter
-  const counter = new THREE.Mesh(new THREE.BoxGeometry(6, 1.1, 1.2),
-    new THREE.MeshStandardMaterial({ color: 0x8a6a3a, roughness: 0.7 }));
-  counter.position.set(cx, 0.55, cz - 3.5); g.add(counter);
-  // Warm light (emissive bulb + a real point light so the vendor reads on camera)
-  const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 8),
-    new THREE.MeshStandardMaterial({ color: 0xffe8a0, emissive: 0xffd76a, emissiveIntensity: 2 }));
-  lamp.position.set(cx, 4.2, cz); g.add(lamp);
+  mkWall(16, 5, 0.5, cx, 2.5, cz - 6);
+  mkWall(16, 5, 0.5, cx, 2.5, cz + 6);
+  mkWall(0.5, 5, 12, cx - 8, 2.5, cz);
+  mkWall(0.5, 5, 12, cx + 8, 2.5, cz);
+  const ceil = new THREE.Mesh(
+    new THREE.PlaneGeometry(16, 12),
+    new THREE.MeshStandardMaterial({ color: 0x2a2018 })
+  );
+  ceil.rotation.x = Math.PI / 2;
+  ceil.position.set(cx, 5, cz);
+  g.add(ceil);
+  const counter = new THREE.Mesh(
+    new THREE.BoxGeometry(6, 1.1, 1.2),
+    new THREE.MeshStandardMaterial({ color: 0x8a6a3a, roughness: 0.7 })
+  );
+  counter.position.set(cx, 0.55, cz - 3.5);
+  g.add(counter);
+  const lamp = new THREE.Mesh(
+    new THREE.SphereGeometry(0.5, 8, 8),
+    new THREE.MeshStandardMaterial({ color: 0xffe8a0, emissive: 0xffd76a, emissiveIntensity: 2 })
+  );
+  lamp.position.set(cx, 4.2, cz);
+  g.add(lamp);
   const roomLight = new THREE.PointLight(0xffd9a0, 30, 18, 1.4);
   roomLight.position.set(cx, 4, cz - 1);
   g.add(roomLight);
-  // Vendor NPC behind the counter
   const vendor = makeVendorMesh(who);
-  vendor.position.set(cx, 0, cz - 4.6); g.add(vendor);
-  // Exit mat (glowing)
-  const mat = new THREE.Mesh(new THREE.PlaneGeometry(3, 2),
-    new THREE.MeshStandardMaterial({ color: 0x7dff9b, emissive: 0x2a8a4a, emissiveIntensity: 0.8 }));
-  mat.rotation.x = -Math.PI / 2; mat.position.set(cx, 0.08, cz + 5); g.add(mat);
+  vendor.position.set(cx, 0, cz - 4.6);
+  g.add(vendor);
+  const mat = new THREE.Mesh(
+    new THREE.PlaneGeometry(3, 2),
+    new THREE.MeshStandardMaterial({ color: 0x7dff9b, emissive: 0x2a8a4a, emissiveIntensity: 0.8 })
+  );
+  mat.rotation.x = -Math.PI / 2;
+  mat.position.set(cx, 0.08, cz + 5);
+  g.add(mat);
   G.scene.add(g);
   return { group: g, cx, cz, kind, who, vendor, exitX: cx, exitZ: cz + 5 };
 }
+
 function makeVendorMesh(who) {
-  // Simple person mesh (reuse the people builder via a fresh group)
   const g = new THREE.Group();
   const shirt = new THREE.MeshStandardMaterial({ color: who === 'rosa' ? 0xb56a3a : 0x4a6a8a, roughness: 0.9 });
   const skin = new THREE.MeshStandardMaterial({ color: 0xc89878, roughness: 0.8 });
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 10), skin);
-  head.position.y = 1.62; g.add(head);
+  head.position.y = 1.62;
+  g.add(head);
   const torso = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.75, 0.36), shirt);
-  torso.position.y = 1.08; g.add(torso);
-  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.3),
-    new THREE.MeshStandardMaterial({ color: 0x2a2d3a }));
-  legs.position.y = 0.35; g.add(legs);
+  torso.position.y = 1.08;
+  g.add(torso);
+  const legs = new THREE.Mesh(
+    new THREE.BoxGeometry(0.5, 0.7, 0.3),
+    new THREE.MeshStandardMaterial({ color: 0x2a2d3a })
+  );
+  legs.position.y = 0.35;
+  g.add(legs);
   return g;
 }
+
 function buildInteriors() {
-  // Rooms hidden far off-island (x ~ 800), never visible from the city.
   G._rooms = {
     faro: buildInteriorRoom(800, 800, 'food', 'rosa'),
     garage: buildInteriorRoom(840, 800, 'repair', 'tomas'),
@@ -162,32 +192,39 @@ function wireInput() {
       case 'Digit4': switchWeapon(3); break;
       case 'KeyR': reloadWeapon(); break;
       case 'KeyQ': changeStation(); break;
-      case 'KeyM': toggleMute(); toast(toggleMute.state ? '' : ''); break;
+      case 'KeyM': toggleMute(); break;
       case 'KeyH': sfxHorn(); break;
       case 'KeyV': G.camMode = (G.camMode + 1) % 2; break;
       case 'Escape': closeMap(); pauseGame(); break;
     }
-    // Fire with mouse click (when not dragging)
-    if (e.code === 'MouseLeft') {}
   });
-  window.addEventListener('keyup', e => { if (keyMap[e.code]) G.keys[keyMap[e.code]] = false; });
-  // Mouse: click to fire, drag to orbit camera
-  let dragging = false, lx = 0, ly = 0, moved = 0;
+  window.addEventListener('keyup', e => {
+    if (keyMap[e.code]) G.keys[keyMap[e.code]] = false;
+  });
+  let dragging = false;
+  let lx = 0;
+  let ly = 0;
+  let moved = 0;
   renderer.domElement.addEventListener('mousedown', e => {
     if (e.button !== 0) return;
-    dragging = true; lx = e.clientX; ly = e.clientY; moved = 0;
+    dragging = true;
+    lx = e.clientX; ly = e.clientY; moved = 0;
   });
   window.addEventListener('mousemove', e => {
     if (!dragging) return;
-    const dx = e.clientX - lx, dy = e.clientY - ly;
-    lx = e.clientX; ly = e.clientY; moved += Math.abs(dx) + Math.abs(dy);
-    camYaw -= dx * 0.005; camPitch = clamp(camPitch + dy * 0.003, 0.05, 1.1);
+    const dx = e.clientX - lx;
+    const dy = e.clientY - ly;
+    lx = e.clientX; ly = e.clientY;
+    moved += Math.abs(dx) + Math.abs(dy);
+    camYaw -= dx * 0.005;
+    camPitch = clamp(camPitch + dy * 0.003, 0.05, 1.1);
   });
-  window.addEventListener('mouseup', e => {
-    if (dragging && moved < 6 && G.running && !G.paused) fireWeapon();
+  window.addEventListener('mouseup', () => {
+    if (dragging && moved < 6 && G.running && !G.paused) {
+      if (fireWeapon()) spawnMuzzleFlash();
+    }
     dragging = false;
   });
-  // Menu buttons
   $('btnContinue').addEventListener('click', () => { sfxClick(); startGame(true); });
   $('btnNew').addEventListener('click', () => { sfxClick(); clearSave(); startGame(false); });
   $('btnHow').addEventListener('click', () => { $('menu').classList.add('hidden'); $('howto').classList.remove('hidden'); });
@@ -196,13 +233,12 @@ function wireInput() {
   $('btnSettingsBack').addEventListener('click', () => { $('settings').classList.add('hidden'); $('menu').classList.remove('hidden'); });
   $('closeMapBtn').addEventListener('click', () => closeMap());
   $('volSlider').addEventListener('input', e => {
-    const v = +e.target.value; $('volVal').textContent = v; setVolume(v / 100);
+    const v = +e.target.value;
+    $('volVal').textContent = v;
+    setVolume(v / 100);
   });
-  // Hide Continue if no save
   if (!hasSave()) $('btnContinue').style.display = 'none';
 }
-
-function wireMenus() { /* menus wired in wireInput */ }
 
 function startGame(continueSave) {
   $('menu').classList.add('hidden');
@@ -215,9 +251,11 @@ function startGame(continueSave) {
   } else {
     G.cash = 0; G.respect = 0; G.debt = 40000; G.coins = 0; G.coinsGot = {};
     G.chapter = 0; G.day = 1; G.timeOfDay = 18; G.wanted = 0;
-    G.player.pos.set(0, 0, 40); G.player.heading = 0;
+    G.player.pos.set(0, 0, 40);
+    G.player.heading = 0;
   }
-  G.running = true; G.paused = false;
+  G.running = true;
+  G.paused = false;
   startRadio();
   if (!G.mission && G.chapter < 7) startChapter(G.chapter);
   toast('Welcome to Porto Verde. Follow the gold marker.');
@@ -228,93 +266,338 @@ function startGame(continueSave) {
 function pauseGame() {
   if (!G.running) return;
   G.paused = !G.paused;
-  if (G.paused) { $('menu').classList.remove('hidden'); $('hud').classList.add('hidden'); }
-  else { $('menu').classList.add('hidden'); $('hud').classList.remove('hidden'); }
+  if (G.paused) {
+    $('menu').classList.remove('hidden');
+    $('hud').classList.add('hidden');
+  } else {
+    $('menu').classList.add('hidden');
+    $('hud').classList.remove('hidden');
+  }
 }
 
 function toggleMap() {
   if (!G.running) return;
-  if (G.mapOpen) closeMap(); else { G.mapOpen = true; $('fullMap').classList.remove('hidden'); drawFullMap(); }
+  if (G.mapOpen) closeMap();
+  else {
+    G.mapOpen = true;
+    $('fullMap').classList.remove('hidden');
+    drawFullMap();
+  }
 }
-function closeMap() { G.mapOpen = false; $('fullMap').classList.add('hidden'); }
 
-// ---- Context action (E): car, talk, interiors, buy, leave ----
+function closeMap() {
+  G.mapOpen = false;
+  $('fullMap').classList.add('hidden');
+}
+
+// ---- Muzzle flash (a Sprite, so it reads in a still) ----
+function spawnMuzzleFlash() {
+  const p = G.player;
+  if (!p) return;
+  if (flashSprite) {
+    G.scene.remove(flashSprite);
+    flashSprite = null;
+  }
+  const cv = document.createElement('canvas');
+  cv.width = 64; cv.height = 64;
+  const cx = cv.getContext('2d');
+  const grad = cx.createRadialGradient(32, 32, 2, 32, 32, 30);
+  grad.addColorStop(0, 'rgba(255,255,220,1)');
+  grad.addColorStop(0.4, 'rgba(255,200,80,0.9)');
+  grad.addColorStop(1, 'rgba(255,120,20,0)');
+  cx.fillStyle = grad;
+  cx.fillRect(0, 0, 64, 64);
+  const tex = new THREE.CanvasTexture(cv);
+  flashSprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
+  );
+  flashSprite.scale.set(3.2, 3.2, 1);
+  const fx = Math.sin(p.heading);
+  const fz = Math.cos(p.heading);
+  const oy = p.onFoot ? 1.4 : 1.2;
+  flashSprite.position.set(p.pos.x + fx * 1.2, oy, p.pos.z + fz * 1.2);
+  G.scene.add(flashSprite);
+  flashTimer = 0.5;
+}
+
+function updateFlash(dt) {
+  if (!flashSprite) return;
+  flashTimer -= dt;
+  if (flashTimer <= 0) {
+    G.scene.remove(flashSprite);
+    flashSprite = null;
+  }
+}
+
+// ---- v3 economy: properties, garage upgrades, respray, ammo, side race ----
+function nearestProp(maxD) {
+  const p = G.player;
+  let best = null;
+  let bd = maxD;
+  for (const def of (G.propertyDefs || [])) {
+    const d = Math.hypot(p.pos.x - def.x, p.pos.z - def.z);
+    if (d < bd) { bd = d; best = def; }
+  }
+  return best;
+}
+
+function nearestService(maxD) {
+  const p = G.player;
+  let best = null;
+  let bd = maxD;
+  for (const def of (G.serviceDefs || [])) {
+    const d = Math.hypot(p.pos.x - def.x, p.pos.z - def.z);
+    if (d < bd) { bd = d; best = def; }
+  }
+  return best;
+}
+
+function buyProperty(def) {
+  if ((G.properties || []).includes(def.id)) {
+    toast(def.name + ' is already yours — it pays $' + def.income + ' a day.');
+    return;
+  }
+  if (G.cash < def.price) {
+    toast('Not enough cash — ' + def.name + ' is $' + def.price.toLocaleString() + '.');
+    return;
+  }
+  G.cash -= def.price;
+  G.properties.push(def.id);
+  toast('You bought ' + def.name + ' for $' + def.price.toLocaleString() + ' — it pays $' + def.income + ' a day.');
+  updateHUD();
+  saveGame();
+}
+
+function buyGarageUp() {
+  // Buy the next unowned upgrade in order (tires -> brakes -> chassis).
+  const defs = G.garageDefs || [];
+  const next = defs.find(d => !(G.garageUpgrades || {})[d.id]);
+  if (!next) {
+    toast('All garage upgrades installed.');
+    return;
+  }
+  if (G.cash < next.price) {
+    toast('Not enough cash — ' + next.name + ' is $' + next.price.toLocaleString() + '.');
+    return;
+  }
+  G.cash -= next.price;
+  G.garageUpgrades[next.id] = true;
+  // Real driving effect: retune the player's current car (a private copy
+  // of its type, so traffic cars are untouched).
+  const car = G.player && G.player.car;
+  if (car) {
+    car.type = {
+      ...car.type,
+      accel: car.type.accel * next.accelMul,
+      top: car.type.top * next.topMul,
+    };
+  }
+  toast('Installed ' + next.name + ' — $' + next.price.toLocaleString() + '. Your car is quicker now.');
+  updateHUD();
+  saveGame();
+}
+
+function doRespray() {
+  const car = G.player && G.player.car;
+  if (!car) {
+    toast('You need to be in a car for a respray.');
+    return;
+  }
+  const price = 150;
+  if (G.cash < price) {
+    toast('Not enough cash — a respray is $150.');
+    return;
+  }
+  const colors = G.paintColors || [0xff2a7a];
+  const cur = car.mesh.userData.bodyMat ? car.mesh.userData.bodyMat.color.getHex() : 0;
+  let idx = colors.findIndex(c => c === cur);
+  idx = (idx + 1) % colors.length;
+  G.cash -= price;
+  if (car.mesh.userData.bodyMat) {
+    car.mesh.userData.bodyMat.color.setHex(colors[idx]);
+  }
+  toast('Resprayed — $150. Fresh paint.');
+  updateHUD();
+  saveGame();
+}
+
+function buyAmmo() {
+  const price = 30;
+  if (G.cash < price) {
+    toast('Not enough cash — pistol ammo is $30.');
+    return;
+  }
+  G.cash -= price;
+  G.ammo[1].reserve += 12;
+  toast('Pistol ammo +12 — $30.');
+  updateHUD();
+  saveGame();
+}
+
+// Coastline Sprint: repeatable race, 120s, 5 checkpoints, $200 + 10 Respect.
+const RACE_POINTS = [[240, 40], [0, 0], [40, -200], [-200, -40], [0, 260]];
+function startSideRace() {
+  if (G.sideRace) {
+    toast('Race already running — reach the next checkpoint.');
+    return;
+  }
+  if (!G.player.car) {
+    toast('You need a car to race.');
+    return;
+  }
+  G.sideRace = { points: RACE_POINTS, idx: 0, timer: 120, elapsed: 0 };
+  toast('Coastline Sprint — 5 checkpoints, 120s. Go!');
+  updateHUD();
+}
+
+function updateSideRace(dt) {
+  const r = G.sideRace;
+  if (!r || !G.player) return;
+  r.timer -= dt;
+  r.elapsed += dt;
+  if (r.timer <= 0) {
+    G.sideRace = null;
+    toast('Sprint failed — out of time.');
+    updateHUD();
+    return;
+  }
+  const [tx, tz] = r.points[r.idx];
+  const d = Math.hypot(G.player.pos.x - tx, G.player.pos.z - tz);
+  if (d < 16) {
+    r.idx++;
+    if (r.idx >= r.points.length) {
+      const t = r.elapsed;
+      G.sideRace = null;
+      G.cash += 200;
+      G.respect += 10;
+      if (G.raceBest === null || t < G.raceBest) G.raceBest = t;
+      toast('Sprint won! +$200 · +10 Respect · Best ' + t.toFixed(1) + 's');
+      updateHUD();
+      saveGame();
+    } else {
+      toast('Checkpoint ' + r.idx + '/' + r.points.length + ' — keep going!');
+    }
+  }
+}
+
+// ---- Context action (E): car, talk, interiors, properties, services ----
 function nearestCar(maxD) {
-  let best = null, bd = maxD;
-  const all = [...G.traffic];
-  for (const c of all) {
+  let best = null;
+  let bd = maxD;
+  for (const c of G.traffic) {
     const d = Math.hypot(c.mesh.position.x - G.player.pos.x, c.mesh.position.z - G.player.pos.z);
     if (d < bd) { bd = d; best = c; }
   }
   return best;
 }
+
 function contextAction() {
   if (!G.player || dead) return;
-  const p = G.player, px = p.pos.x, pz = p.pos.z;
-  // Inside an interior
+  const p = G.player;
+  const px = p.pos.x;
+  const pz = p.pos.z;
+  // Inside an interior.
   if (interior) {
     const r = interior;
     const dv = Math.hypot(px - r.cx, pz - (r.cz - 4.6));
     const de = Math.hypot(px - r.exitX, pz - r.exitZ);
     if (dv < 4) {
-      // Buy
       if (r.kind === 'food') {
-        if (G.cash >= 10) { G.cash -= 10; p.health = Math.min(100, p.health + 25); toast('Taco — $10. Health +25.'); say('rosa', crewLine('rosa')); }
-        else toast('Not enough cash — a taco is $10.');
+        if (G.cash >= 10) {
+          G.cash -= 10;
+          p.health = Math.min(100, p.health + 25);
+          toast('Taco — $10. Health +25.');
+          say('rosa', crewLine('rosa'));
+        } else toast('Not enough cash — a taco is $10.');
       } else {
-        if (G.cash >= 100) { G.cash -= 100; if (p.car) { p.car.condition = 100; p.car.mesh.userData.smoke.visible = false; } toast('Car repaired — $100.'); say('tomas', crewLine('tomas')); }
-        else toast('Not enough cash — a repair is $100.');
+        if (G.cash >= 100) {
+          G.cash -= 100;
+          if (p.car) {
+            p.car.condition = 100;
+            p.car.mesh.userData.smoke.visible = false;
+          }
+          toast('Car repaired — $100.');
+          say('tomas', crewLine('tomas'));
+        } else toast('Not enough cash — a repair is $100.');
       }
-      updateHUD(); return;
+      updateHUD();
+      return;
     }
-    if (de < 3) {
-      // Leave the interior
-      leaveInterior(); return;
-    }
+    if (de < 3) { leaveInterior(); return; }
     return;
   }
-  // Near a vendor door -> enter interior
+  // Near a property or a service -> use whichever is closer (they can
+  // sit near each other in Old Town / the Marina, so distance decides).
+  const prop = nearestProp(30);
+  const svc = nearestService(30);
+  const propD = prop ? Math.hypot(px - prop.x, pz - prop.z) : Infinity;
+  const svcD = svc ? Math.hypot(px - svc.x, pz - svc.z) : Infinity;
+  if (prop && propD <= svcD) { buyProperty(prop); return; }
+  if (svc) {
+    if (svc.kind === 'respray') { doRespray(); return; }
+    if (svc.kind === 'ammo') { buyAmmo(); return; }
+    if (svc.kind === 'race') { startSideRace(); return; }
+    if (svc.kind === 'garage') { buyGarageUp(); return; }
+  }
+  if (prop) { buyProperty(prop); return; }
+  // Near a vendor door -> enter interior.
   for (const v of G.world.vendors) {
     const d = Math.hypot(px - v.x, pz - v.z);
     if (d < 6) { enterInterior(v); return; }
   }
-  // Near a pedestrian -> talk
+  // Near a pedestrian -> talk.
   for (const ped of G.peds) {
     const d = Math.hypot(ped.mesh.position.x - px, ped.mesh.position.z - pz);
     if (d < 4) { say(ped.name, bark()); return; }
   }
-  // In a car -> exit; on foot near a car -> enter/steal
-  if (!p.onFoot && p.car) {
-    exitCar(); return;
-  }
+  // In a car -> exit; on foot near a car -> enter/steal.
+  if (!p.onFoot && p.car) { exitCar(); return; }
   const car = nearestCar(5);
   if (car) {
-    p.car = car; p.onFoot = false;
+    p.car = car;
+    p.onFoot = false;
     car.traffic = false;
     p.mesh.visible = false;
     G.traffic = G.traffic.filter(c => c !== car);
+    // Apply owned garage upgrades to this car (private type copy).
+    const ups = G.garageDefs || [];
+    let accelMul = 1;
+    let topMul = 1;
+    for (const u of ups) {
+      if ((G.garageUpgrades || {})[u.id]) {
+        accelMul *= u.accelMul;
+        topMul *= u.topMul;
+      }
+    }
+    if (accelMul !== 1 || topMul !== 1) {
+      car.type = { ...car.type, accel: car.type.accel * accelMul, top: car.type.top * topMul };
+    }
     toast('You took the ' + car.type.name + '.');
-    if (G.wanted < 1 && Math.random() < 0.4) addWanted(1); // stealing is a crime
+    if (G.wanted < 1 && Math.random() < 0.4) addWanted(1);
     updateHUD();
   }
 }
+
 function exitCar() {
-  const p = G.player, car = p.car;
+  const p = G.player;
+  const car = p.car;
   if (!car) return;
   p.mesh.visible = true;
   p.pos.x = car.mesh.position.x + Math.sin(car.heading + Math.PI / 2) * 3;
   p.pos.z = car.mesh.position.z + Math.cos(car.heading + Math.PI / 2) * 3;
   p.mesh.position.set(p.pos.x, 0, p.pos.z);
   p.heading = car.heading;
-  p.car = null; p.onFoot = true;
-  car.traffic = true; G.traffic.push(car);
+  p.car = null;
+  p.onFoot = true;
+  car.traffic = true;
+  G.traffic.push(car);
   updateHUD();
 }
+
 function enterInterior(v) {
   const room = v.id === 'faro' ? G._rooms.faro : G._rooms.garage;
   interior = room;
   G.inInterior = v.id;
-  // Fade, teleport
   $('fade').style.opacity = 1;
   setTimeout(() => {
     G.player.pos.set(room.cx, 0, room.cz + 4);
@@ -325,6 +608,7 @@ function enterInterior(v) {
     setHint(v.kind === 'food' ? 'E: Buy taco ($10, +25 health) · walk to the green mat and press E to leave' : 'E: Repair car ($100) · walk to the green mat and press E to leave');
   }, 450);
 }
+
 function leaveInterior() {
   const v = G.world.vendors.find(vv => vv.id === G.inInterior);
   $('fade').style.opacity = 1;
@@ -334,7 +618,8 @@ function leaveInterior() {
       G.player.mesh.position.set(v.x, 0, v.z + 6);
     }
     $('fade').style.opacity = 0;
-    interior = null; G.inInterior = null;
+    interior = null;
+    G.inInterior = null;
     setHint('');
   }, 450);
 }
@@ -342,20 +627,26 @@ function leaveInterior() {
 // ---- Wasted ----
 function wasted() {
   if (dead) return;
-  dead = true; wastedAt = performance.now();
+  dead = true;
+  wastedAt = performance.now();
   $('wasted').classList.remove('hidden');
-  G.wanted = 0; syncPolice();
+  G.wanted = 0;
+  syncPolice();
   setTimeout(() => {
     $('wasted').classList.add('hidden');
-    // Respawn at the hospital, lose $200
     G.cash = Math.max(0, G.cash - 200);
     G.player.health = 100;
-    if (G.player.car) { G.player.car = null; G.player.onFoot = true; G.player.mesh.visible = true; }
+    if (G.player.car) {
+      G.player.car = null;
+      G.player.onFoot = true;
+      G.player.mesh.visible = true;
+    }
     G.player.pos.set(-120, 0, -180);
     G.player.mesh.position.set(-120, 0, -180);
     dead = false;
     toast('You woke up at the hospital. -$200.');
-    updateHUD(); saveGame();
+    updateHUD();
+    saveGame();
   }, 2400);
 }
 
@@ -371,9 +662,11 @@ function streetEvent() {
   ]);
   toast('📻 ' + ev, 4200);
   if (ev.includes('Verde Coin')) {
-    // Drop a bonus coin near the Marina
     const coin = G.world.coins.find(c => !c.visible && !G.coinsGot[c.userData.coinIdx]);
-    if (coin) { coin.position.set(240 + rand(-20, 20), 1.6, 40 + rand(-20, 20)); coin.visible = true; }
+    if (coin) {
+      coin.position.set(240 + rand(-20, 20), 1.6, 40 + rand(-20, 20));
+      coin.visible = true;
+    }
   }
 }
 
@@ -383,17 +676,28 @@ function animate() {
   const dt = Math.min(G.clock.getDelta(), 0.05);
   const t = G.clock.elapsedTime;
   if (!G.running || G.paused || G.mapOpen) {
-    // Still render behind menus/map
     renderer.render(G.scene, G.camera);
     return;
   }
-  // Day/night: 240s per full day
+  // Day/night: 240s per full day.
   G.timeOfDay += dt * (24 / 240);
   if (G.timeOfDay >= 24) { G.timeOfDay -= 24; G.day++; }
+  // Property income: once a day, at dawn.
+  if (G.timeOfDay < 6 && G._lastIncomeDay !== G.day) {
+    G._lastIncomeDay = G.day;
+    let income = 0;
+    for (const id of (G.properties || [])) {
+      const def = (G.propertyDefs || []).find(d => d.id === id);
+      if (def) income += def.income;
+    }
+    if (income > 0) {
+      G.cash += income;
+      toast('Property income +$' + income + ' (Marina Loft / Old Town).');
+    }
+  }
   updateSky();
   animateOcean(t);
   const p = G.player;
-  // ---- Player movement ----
   const input = {
     forward: !!G.keys.forward, back: !!G.keys.back,
     left: !!G.keys.left, right: !!G.keys.right,
@@ -403,8 +707,8 @@ function animate() {
     if (p.onFoot) {
       const run = G.keys.run ? 1.8 : 1;
       const sp = 7 * run;
-      // Move relative to camera yaw
-      let mx = 0, mz = 0;
+      let mx = 0;
+      let mz = 0;
       if (input.forward) { mx += Math.sin(camYaw); mz += Math.cos(camYaw); }
       if (input.back) { mx -= Math.sin(camYaw); mz -= Math.cos(camYaw); }
       if (input.left) { mx += Math.sin(camYaw - Math.PI / 2); mz += Math.cos(camYaw - Math.PI / 2); }
@@ -413,7 +717,8 @@ function animate() {
       if (ml > 0.01) {
         mx /= ml; mz /= ml;
         p.heading = Math.atan2(mx, mz);
-        const nx = p.pos.x + mx * sp * dt, nz = p.pos.z + mz * sp * dt;
+        const nx = p.pos.x + mx * sp * dt;
+        const nz = p.pos.z + mz * sp * dt;
         if (!collideAt(nx, nz, 0.8)) {
           const [cx, cz] = clampToIsland(nx, nz, 5);
           p.pos.x = cx; p.pos.z = cz;
@@ -433,10 +738,10 @@ function animate() {
       p.mesh.rotation.y = p.heading;
     } else if (p.car) {
       driveCar(p.car, dt, input);
-      p.pos.x = p.car.mesh.position.x; p.pos.z = p.car.mesh.position.z;
+      p.pos.x = p.car.mesh.position.x;
+      p.pos.z = p.car.mesh.position.z;
       p.heading = p.car.heading;
       engineSound(p.car.speed, p.car.type.top);
-      // Car damage -> crash sfx + health
       if (p.car.condition <= 0) {
         p.car.condition = 0;
         sfxCrash();
@@ -444,9 +749,7 @@ function animate() {
       }
     }
   }
-  // Camera: third-person chase. Sol direction — fixed height 3.0m, 6m behind,
-  // 15° down (look at 1.4m at the target), FOV 55. Yaw follows the heading:
-  // yaw += wrapPi(heading - yaw) * alpha, alpha = 1 - 0.9^(60*dt) (0.10/frame at 60fps).
+  // Camera: third-person chase. Yaw follows the heading (eased).
   const isCar = !p.onFoot && p.car;
   const targetHeading = p.heading;
   let dh = targetHeading - camYaw;
@@ -455,7 +758,6 @@ function animate() {
   const alpha = isCar ? 1 - Math.pow(0.9, 60 * dt) : 1 - Math.pow(0.95, 60 * dt);
   camYaw += dh * alpha;
   const camTarget = p.onFoot ? p.pos : (p.car ? p.car.mesh.position : p.pos);
-  // Interior: low camera (3.0 above floor), short distance, look at 1.5.
   const inRoom = !!interior;
   const dist = inRoom ? 4.0 : (isCar ? (G.camMode === 0 ? 6.0 : 4.0) : 7.0);
   const camH = 3.0;
@@ -464,30 +766,40 @@ function animate() {
   let cz = camTarget.z - Math.cos(camYaw) * dist;
   let cy = camH;
   if (inRoom && G._rooms) {
-    // Keep the camera inside the room (wall clearance 0.4).
     const room = interior;
     cx = clamp(cx, room.cx - 8 + 0.4, room.cx + 8 - 0.4);
     cz = clamp(cz, room.cz - 6 + 0.4, room.cz + 6 - 0.4);
   }
-  G.camera.position.set(lerp(G.camera.position.x, cx, 0.18), lerp(G.camera.position.y, cy, 0.18), lerp(G.camera.position.z, cz, 0.18));
-  // Snap the camera after a teleport (interior enter/leave) instead of lerping
-  // across the map — otherwise the view lags behind the player for seconds.
-  if (G.camera.position.distanceTo(new THREE.Vector3(cx, cy, cz)) > 30) {
-    G.camera.position.set(cx, cy, cz);
+  // Screenshot staging: a fixed photo camera overrides the chase cam.
+  if (G.photoCam) {
+    G.camera.position.set(G.photoCam.pos[0], G.photoCam.pos[1], G.photoCam.pos[2]);
+    G.camera.lookAt(G.photoCam.look[0], G.photoCam.look[1], G.photoCam.look[2]);
+  } else {
+    G.camera.position.set(
+      lerp(G.camera.position.x, cx, 0.18),
+      lerp(G.camera.position.y, cy, 0.18),
+      lerp(G.camera.position.z, cz, 0.18)
+    );
+    if (G.camera.position.distanceTo(new THREE.Vector3(cx, cy, cz)) > 30) {
+      G.camera.position.set(cx, cy, cz);
+    }
+    G.camera.lookAt(camTarget.x, lookH, camTarget.z);
   }
-  G.camera.lookAt(camTarget.x, lookH, camTarget.z);
-  // Speed FOV kick (base 55, up to 63)
+  // Speed FOV kick (base 55, up to 63).
   const spd = p.car ? Math.abs(p.car.speed) : p.speed;
   const targetFov = 55 + clamp(spd / 38, 0, 1) * 8;
-  if (Math.abs(G.camera.fov - targetFov) > 0.2) { G.camera.fov = lerp(G.camera.fov, targetFov, 0.08); G.camera.updateProjectionMatrix(); }
-  // Headlight at night
+  if (Math.abs(G.camera.fov - targetFov) > 0.2) {
+    G.camera.fov = lerp(G.camera.fov, targetFov, 0.08);
+    G.camera.updateProjectionMatrix();
+  }
+  // Headlight at night.
   const night = G.timeOfDay >= 20 || G.timeOfDay < 6;
   if (headlight) {
     headlight.intensity = night ? 2.2 : 0;
     headlight.position.set(camTarget.x, 2, camTarget.z);
     headlight.target.position.set(camTarget.x + Math.sin(p.heading) * 20, 0, camTarget.z + Math.cos(p.heading) * 20);
   }
-  // Coins
+  // Coins.
   for (const coin of G.world.coins) {
     if (!coin.visible || G.coinsGot[coin.userData.coinIdx]) continue;
     coin.rotation.y += dt * 2;
@@ -495,43 +807,61 @@ function animate() {
     if (Math.hypot(p.pos.x - coin.position.x, p.pos.z - coin.position.z) < 3) {
       coin.visible = false;
       G.coinsGot[coin.userData.coinIdx] = true;
-      G.coins++; G.cash += 25; G.respect += 5;
+      G.coins++;
+      G.cash += 25;
+      G.respect += 5;
       sfxCoin();
       toast('Verde Coin! ' + G.coins + '/' + G.coinsTotal + ' · +$25');
-      updateHUD(); saveGame();
+      updateHUD();
+      saveGame();
     }
   }
-  // Street events
+  // Street events.
   G.eventTimer -= dt;
-  if (G.eventTimer <= 0) { G.eventTimer = rand(45, 75); streetEvent(); }
-  // Police contact damage
+  if (G.eventTimer <= 0) {
+    G.eventTimer = rand(45, 75);
+    streetEvent();
+  }
+  // Police contact damage.
   if (policeTouchingPlayer() && !dead) {
     p.health -= 18 * dt;
-    if (p.health <= 0) { p.health = 0; wasted(); }
+    if (p.health <= 0) {
+      p.health = 0;
+      wasted();
+    }
   }
-  // Siren when wanted
   sfxSiren(G.wanted > 0);
-  // Systems
+  // Systems.
   updateTraffic(dt);
   updatePeds(dt);
   updatePolice(dt);
   updateMissions(dt);
   updateTracers(dt);
-  // Context hint
+  updateSideRace(dt);
+  updateFlash(dt);
+  // Context hint.
   if (!interior) {
     let hint = '';
-    if (!p.onFoot) hint = 'E: Exit car · Space: Handbrake · V: Camera · H: Horn';
-    else {
+    if (!p.onFoot) {
+      hint = 'E: Exit car · Space: Handbrake · V: Camera · H: Horn';
+    } else {
       const car = nearestCar(5);
       const nearVendor = G.world.vendors.some(v => Math.hypot(p.pos.x - v.x, p.pos.z - v.z) < 6);
-      if (nearVendor) hint = 'E: Enter ' + (G.world.vendors.find(v => Math.hypot(p.pos.x - v.x, p.pos.z - v.z) < 6) || {}).name;
+      const nearProp = nearestProp(30);
+      const nearSvc = nearestService(30);
+      if (nearProp) hint = 'E: Buy ' + nearProp.name + ' ($' + nearProp.price.toLocaleString() + ')';
+      else if (nearSvc) hint = 'E: ' + nearSvc.name;
+      else if (nearVendor) hint = 'E: Enter ' + (G.world.vendors.find(v => Math.hypot(p.pos.x - v.x, p.pos.z - v.z) < 6) || {}).name;
       else if (car) hint = 'E: Enter ' + car.type.name + ' · F: Punch · 1-4: Weapons';
       else hint = 'WASD: Move · E: Interact · Tab: Island map';
     }
     setHint(hint);
   }
-  // Autosave
-  if (t - lastSave > 20) { lastSave = t; saveGame(); }
+  // Autosave.
+  if (t - lastSave > 20) {
+    lastSave = t;
+    saveGame();
+  }
   updateHUD();
   renderer.render(G.scene, G.camera);
 }
