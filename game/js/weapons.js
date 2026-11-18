@@ -59,6 +59,7 @@ export function punch() {
 }
 
 // Fire the current weapon (hitscan). Returns true if fired.
+// Firing: rate-limited, consumes mag ammo, raises wanted by 1 star per shot.
 export function fireWeapon() {
   if (!G.player) return false;
   const now = performance.now() / 1000;

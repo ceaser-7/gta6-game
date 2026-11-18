@@ -1,6 +1,7 @@
 // Save / Continue via localStorage.
 import { G } from './state.js';
 
+// Save: cash, respect, debt, coins, chapter, day/time, weapons and player position, to localStorage.
 export function saveGame() {
   if (!G.player) return;
   try {

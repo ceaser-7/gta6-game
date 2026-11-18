@@ -32,5 +32,6 @@ Open `game/index.html` in desktop Chrome, or build the output with `node main.ts
 - Three story missions, street events, collectible Verde Coins
 - Interiors: El Faro restaurant and Sunray Garage
 - Day/night cycle, three radio stations, save/continue
+- Side Jobs, gang territories, riots and stealable race cars
 
 All content is original — own city, characters, names, story, art and sound.

@@ -52,6 +52,7 @@ export function spawnPeds() {
 }
 
 // Pedestrian update: walk the sidewalks, idle in parks, head home at night.
+// Ped routines: wander by day, drift home at night (20:00–06:00).
 export function updatePeds(dt) {
   const night = G.timeOfDay >= 20 || G.timeOfDay < 6;
   for (const p of G.peds) {

@@ -34,6 +34,7 @@ function playNote(freq, time, dur, wave, gainVal) {
   o.connect(g); g.connect(musicGain);
   o.start(time); o.stop(time + dur + 0.05);
 }
+// Radio scheduler: eighth-note grid, bass on beats, sparse pentatonic melody, hat tick.
 function scheduleMusic() {
   if (!ctx || G.muted) return;
   const st = STATIONS[G.radioStation];

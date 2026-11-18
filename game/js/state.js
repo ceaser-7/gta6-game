@@ -1,4 +1,5 @@
 // Shared game state for Porto Verde v2. Every module reads and mutates this one object.
+// One mutable object: three.js handles, world, player, economy, wanted, time, missions, traffic, peds, police.
 export const G = {
   // three.js
   scene: null, camera: null, renderer: null, clock: null,

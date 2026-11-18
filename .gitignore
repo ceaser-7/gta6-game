@@ -1,1 +1,3 @@
 out/
+# Local run and test logs
+*.log
